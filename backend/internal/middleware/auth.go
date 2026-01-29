@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/keenchase/auth-center/internal/config"
 	"gorm.io/gorm"
 )
 
@@ -42,11 +43,9 @@ func Auth(db *gorm.DB) gin.HandlerFunc {
 
 		tokenString := parts[1]
 
-		// 解析 Token
-		secret := c.GetString("JWT_SECRET")
-		if secret == "" {
-			secret = "default-secret-key"
-		}
+		// 加载配置获取 JWT Secret
+		cfg := config.Load()
+		secret := cfg.JWTSecret
 
 		claims := &Claims{}
 		token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
