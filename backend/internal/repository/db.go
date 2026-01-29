@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/keenchase/auth-center/internal/config"
-	"github.com/keenchase/auth-center/internal/models"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -33,15 +32,8 @@ func InitDB(cfg *config.Config) (*gorm.DB, error) {
 		return nil, fmt.Errorf("数据库连接失败: %w", err)
 	}
 
-	// 自动迁移
-	if err := db.AutoMigrate(
-		&models.User{},
-		&models.UserAccount{},
-		&models.Session{},
-	); err != nil {
-		return nil, fmt.Errorf("数据库迁移失败: %w", err)
-	}
-
+	// 数据库已存在，禁用 AutoMigrate
+	// 生产环境中应该使用数据库迁移工具（如 golang-migrate）而不是 AutoMigrate
 	log.Println("数据库连接成功")
 	return db, nil
 }
