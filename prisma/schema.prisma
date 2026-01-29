@@ -1,0 +1,67 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("AUTH_CENTER_DATABASE_URL")
+}
+
+/// 用户层（User）- 真实用户的唯一标识
+/// 根据 UnionID 机制标准设计：unionid = 人，openid = 登录入口
+model User {
+  userId       String   @id @default(uuid()) @map("user_id")
+  unionId      String?  @unique @map("union_id") // 微信 unionid（多端统一标识，注册后必须有）
+  phoneNumber  String?  @unique @map("phone_number") // 手机号（用于密码登录）
+  passwordHash String?  @map("password_hash") // 密码哈希（由管理员设置）
+  email        String?  @unique // 邮箱
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // 关联的登录入口（一个用户可以有多个）
+  accounts     UserAccount[]
+  sessions     Session[]
+
+  @@map("users")
+}
+
+/// 登录入口层（UserAccount）- 存储各端的 openid
+/// 一个用户可以绑定多个登录方式：PC网页、公众号、小程序、App等
+model UserAccount {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  // 登录渠道信息
+  provider  String   // 'wechat'
+  appId     String   @map("app_id") // 应用 AppID（如：wx1234567890abcdef）
+  openId    String   @map("open_id") // 该应用下的 openid
+  type      String   // 'web' | 'mp' | 'miniapp' | 'app'
+
+  // 可选的用户基本信息
+  nickname  String?
+  avatarUrl String?  @map("avatar_url")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // 同一应用下的 openid 必须唯一
+  @@unique([provider, appId, openId])
+  @@index([userId])
+  @@index([appId, openId])
+  @@map("user_accounts")
+}
+
+/// 登录会话表 - 管理用户登录会话
+model Session {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime @map("expires_at")
+  deviceInfo Json?   @map("device_info") // 设备信息：IP, User-Agent等
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@map("sessions")
+}
