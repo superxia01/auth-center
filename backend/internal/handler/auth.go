@@ -260,10 +260,49 @@ func PasswordLogin(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// TODO: 实现密码验证逻辑
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"error":   "密码登录功能待实现",
+		// 验证密码
+		user, err := service.VerifyPassword(db, req.PhoneNumber, req.Password)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"success": false,
+				"error":   "手机号或密码错误",
+			})
+			return
+		}
+
+		if user == nil {
+			c.JSON(http.StatusNotFound, gin.H{
+				"success": false,
+				"error":   "用户不存在",
+			})
+			return
+		}
+
+		// 生成 JWT Token
+		cfg := config.Load()
+		token, err := service.GenerateToken(user.UserID, cfg.JWTSecret)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"error":   "生成Token失败",
+			})
+			return
+		}
+
+		// 创建会话
+		_, err = service.CreateSession(db, user.UserID, token, nil)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"error":   "创建会话失败",
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, LoginResponse{
+			Success: true,
+			Token:   token,
+			UserID:  user.UserID,
 		})
 	}
 }
