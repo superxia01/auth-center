@@ -15,7 +15,7 @@ import (
 
 func main() {
 	// 加载环境变量
-	if err := godotenv.Load("../../.env"); err != nil {
+	if err := godotenv.Load("../.env"); err != nil {
 		log.Printf("警告: 无法加载 .env 文件: %v", err)
 	}
 
