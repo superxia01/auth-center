@@ -23,6 +23,12 @@ type Config struct {
 	// 管理员配置
 	AdminWeChatOpenID string
 
+	// CORS 白名单
+	AllowedOrigins string
+
+	// 回调域名白名单
+	AllowedCallbackDomains string
+
 	// 环境变量
 	Environment string
 }
@@ -30,14 +36,16 @@ type Config struct {
 // Load 从环境变量加载配置
 func Load() *Config {
 	return &Config{
-		DatabaseURL:         getEnv("AUTH_CENTER_DATABASE_URL", ""),
-		JWTSecret:           getEnv("AUTH_CENTER_SECRET", ""),
-		WeChatAppID:         getEnv("WECHAT_APP_ID", ""),
-		WeChatAppSecret:     getEnv("WECHAT_APP_SECRET", ""),
-		WeChatMPAppID:        getEnv("WECHAT_MP_APPID", ""),
-		WeChatMPSecret:       getEnv("WECHAT_MP_SECRET", ""),
-		AdminWeChatOpenID:    getEnv("ADMIN_WECHAT_OPENID", ""),
-		Environment:          getEnv("NODE_ENV", "development"),
+		DatabaseURL:      getEnv("DATABASE_URL", ""),
+		JWTSecret:        getEnv("AUTH_CENTER_SECRET", ""),
+		WeChatAppID:      getEnv("WECHAT_APP_ID", ""),
+		WeChatAppSecret:  getEnv("WECHAT_APP_SECRET", ""),
+		WeChatMPAppID:    getEnv("WECHAT_MP_APPID", ""),
+		WeChatMPSecret:   getEnv("WECHAT_MP_SECRET", ""),
+		AdminWeChatOpenID: getEnv("ADMIN_WECHAT_OPENID", ""),
+		AllowedOrigins:   getEnv("ALLOWED_ORIGINS", "https://os.crazyaigc.com,https://pr.crazyaigc.com"),
+		AllowedCallbackDomains: getEnv("ALLOWED_CALLBACK_DOMAINS", "os.crazyaigc.com,pr.crazyaigc.com,3xvs5r4nm4.coze.site"),
+		Environment:      getEnv("NODE_ENV", "development"),
 	}
 }
 

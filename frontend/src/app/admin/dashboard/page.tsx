@@ -98,20 +98,20 @@ export default function AdminDashboard() {
 
       let loginResponse
       if (loginType === 'mp') {
-        // 微信内：使用公众号授权回调API
-        console.log('📱 使用公众号授权API')
-        loginResponse = await fetch('/api/auth/wechat/callback', {
+        // 微信内：使用公众号登录API
+        console.log('📱 使用公众号登录API')
+        loginResponse = await fetch('/api/auth/wechat/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code, loginType: 'mp' }),
+          body: JSON.stringify({ code, type: 'mp' }),
         })
       } else {
-        // PC端：使用开放平台扫码登录API
-        console.log('💻 使用开放平台扫码登录API')
-        loginResponse = await fetch('/api/auth/wechat/open-platform-callback', {
+        // PC端：使用开放平台登录API
+        console.log('💻 使用开放平台登录API')
+        loginResponse = await fetch('/api/auth/wechat/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code }),
+          body: JSON.stringify({ code, type: 'open' }),
         })
       }
 
@@ -119,13 +119,13 @@ export default function AdminDashboard() {
 
       console.log('📥 登录响应:', {
         success: data.success,
-        hasData: !!data.data,
-        hasToken: !!data.data?.token,
+        hasToken: !!data.token,
+        userId: data.userId,
         error: data.error
       })
 
-      if (data.success && data.data.token) {
-        const { token } = data.data
+      if (data.success && data.token) {
+        const { token } = data
         setToken(token)
         localStorage.setItem('adminToken', token)
         // 清除URL中的code和type参数
@@ -133,7 +133,7 @@ export default function AdminDashboard() {
         // 验证管理员权限
         await verifyAdmin(token)
       } else {
-        const errorMsg = data.error?.message || '微信登录失败'
+        const errorMsg = data.error || '微信登录失败'
         console.error('❌ 登录失败:', errorMsg)
 
         // 提供更友好的错误提示
@@ -482,22 +482,28 @@ export default function AdminDashboard() {
             <table className="w-full">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     用户ID
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    UnionID
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     手机号
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     邮箱
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     登录方式
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    账号信息
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     注册时间
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     操作
                   </th>
                 </tr>
@@ -505,38 +511,59 @@ export default function AdminDashboard() {
               <tbody className="bg-white divide-y divide-gray-200">
                 {users.map((user) => (
                   <tr key={user.userId} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900 font-mono">
                       {user.userId}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600 font-mono">
+                      {user.unionId || '-'}
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">
                       {user.phoneNumber || '-'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">
                       {user.email || '-'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                    <td className="px-4 py-4 whitespace-nowrap text-sm">
                       <div className="flex space-x-2">
-                        {user.loginMethods.wechat && (
+                        {user.loginMethods?.wechat && (
                           <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded">
                             微信
                           </span>
                         )}
-                        {user.loginMethods.password && (
+                        {user.loginMethods?.password && (
                           <span className="px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded">
                             密码
                           </span>
                         )}
-                        {!user.loginMethods.wechat && !user.loginMethods.password && (
+                        {!user.loginMethods?.wechat && !user.loginMethods?.password && (
                           <span className="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-800 rounded">
                             未设置
                           </span>
                         )}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                      {new Date(user.createdAt).toLocaleString('zh-CN')}
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">
+                      {user.accounts && user.accounts.length > 0 ? (
+                        <div className="space-y-1">
+                          {user.accounts.map((acc: any, idx: number) => (
+                            <div key={idx} className="text-xs">
+                              <div className="font-medium">{acc.provider === 'wechat' ? '微信' : acc.provider}</div>
+                              <div className="text-gray-500">
+                                {acc.type === 'web' ? '网页' :
+                                 acc.type === 'mp' ? '公众号' :
+                                 acc.type === 'miniapp' ? '小程序' : acc.type}
+                                {acc.nickname && ` - ${acc.nickname}`}
+                              </div>
+                              <div className="text-gray-400 font-mono text-xs">{acc.openId}</div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : '-'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">
+                      {user.createdAt ? new Date(user.createdAt).toLocaleString('zh-CN') : '-'}
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm">
                       <button
                         onClick={() => openEditModal(user)}
                         className="text-blue-600 hover:text-blue-900 font-medium"

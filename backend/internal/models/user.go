@@ -2,8 +2,6 @@ package models
 
 import (
 	"time"
-
-	"gorm.io/gorm"
 )
 
 // User 用户表
@@ -26,7 +24,7 @@ func (User) TableName() string {
 
 // UserAccount 用户登录账户表
 type UserAccount struct {
-	ID        string    `gorm:"primaryKey;column:id;type:uuid" json:"id"`
+	ID        string    `gorm:"primaryKey;column:id;type:uuid;default:gen_random_uuid()" json:"id"`
 	UserID    string    `gorm:"index;column:user_id;type:uuid;not null" json:"userId"`
 	Provider  string    `gorm:"column:provider;type:varchar(50);not null" json:"provider"` // wechat
 	AppID     string    `gorm:"column:app_id;type:varchar(100);not null" json:"appId"`
@@ -60,25 +58,4 @@ type Session struct {
 // TableName 指定表名
 func (Session) TableName() string {
 	return "sessions"
-}
-
-// BeforeCreate GORM hook
-func (s *Session) BeforeCreate(tx *gorm.DB) error {
-	if s.ID == "" {
-		s.ID = generateUUID()
-	}
-	return nil
-}
-
-// BeforeCreate GORM hook
-func (u *UserAccount) BeforeCreate(tx *gorm.DB) error {
-	if u.ID == "" {
-		u.ID = generateUUID()
-	}
-	return nil
-}
-
-// generateUUID 生成 UUID
-func generateUUID() string {
-	return "uuid-" + time.Now().Format("20060102150405")
 }

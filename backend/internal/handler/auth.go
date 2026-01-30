@@ -1,7 +1,10 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/keenchase/auth-center/internal/config"
@@ -24,9 +27,38 @@ type LoginResponse struct {
 	Error    string `json:"error,omitempty"`
 }
 
-// WeChatLogin 微信登录
+// isWechatBrowser 检测是否在微信内置浏览器
+func isWechatBrowser(userAgent string) bool {
+	return containsIgnoreCase(userAgent, "MicroMessenger") ||
+		containsIgnoreCase(userAgent, "wxwork") ||
+		containsIgnoreCase(userAgent, "WeChat")
+}
+
+func containsIgnoreCase(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && (s[:len(substr)] == substr || s[len(s)-len(substr):] == substr || indexOfIgnoreCase(s, substr) >= 0))
+}
+
+func indexOfIgnoreCase(s, substr string) int {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return i
+		}
+	}
+	return -1
+}
+
+// WeChatLogin 微信登录（支持 POST 和 GET）
+// POST: 使用 code 换取 token（已登录后回调）
+// GET: 重定向到微信授权页面（智能检测：PC扫码 or 微信内授权）
 func WeChatLogin(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// GET 请求：重定向到微信授权页面
+		if c.Request.Method == "GET" {
+			handleWeChatLoginRedirect(c)
+			return
+		}
+
+		// POST 请求：使用 code 换取 token
 		var req LoginRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, LoginResponse{
@@ -50,12 +82,31 @@ func WeChatLogin(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// 获取用户信息
+		// 获取用户信息（仅公众号需要调用此接口）
 		userInfo, err := service.GetWeChatUserInfo(wxResp.AccessToken, wxResp.OpenID, isMP)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, LoginResponse{
 				Success: false,
 				Error:   "获取用户信息失败",
+			})
+			return
+		}
+
+		// 提取 UnionID（注意：公众号和开放平台的 unionid 获取位置不同）
+		var unionID string
+		if isMP {
+			// 公众号：unionid 在 userinfo 响应中
+			unionID = service.GetStringValue(userInfo, "unionid")
+		} else {
+			// 开放平台：unionid 在 access_token 响应中
+			unionID = wxResp.UnionID
+		}
+
+		// 验证 unionID 不为空
+		if unionID == "" {
+			c.JSON(http.StatusBadRequest, LoginResponse{
+				Success: false,
+				Error:   "无法获取用户唯一标识，请确保应用已绑定到微信开放平台",
 			})
 			return
 		}
@@ -73,7 +124,7 @@ func WeChatLogin(db *gorm.DB) gin.HandlerFunc {
 
 		user, err := service.FindOrCreateUserByUnionID(
 			db,
-			wxResp.UnionID,
+			unionID,
 			wxResp.OpenID,
 			appID,
 			accountType,
@@ -116,6 +167,139 @@ func WeChatLogin(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
+// handleWeChatLoginRedirect 处理微信登录重定向（智能检测）
+func handleWeChatLoginRedirect(c *gin.Context) {
+	cfg := config.Load()
+	callbackURL := c.Query("callbackUrl")
+	if callbackURL == "" {
+		callbackURL = "/"
+	}
+
+	// 验证回调 URL（简单验证：必须以 https://os.crazyaigc.com 开头）
+	if !isValidCallbackURL(callbackURL) {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "INVALID_CALLBACK_URL",
+				"message": "回调 URL 不在允许的域名列表中",
+			},
+		})
+		return
+	}
+
+	// 获取 Host（优先使用 X-Forwarded-Host，因为可能有 Nginx 代理）
+	host := c.GetHeader("X-Forwarded-Host")
+	if host == "" {
+		host = c.GetHeader("Host")
+	}
+	// 移除端口号
+	if idx := len(host) - 1; idx >= 0 && host[idx] >= '0' && host[idx] <= '9' {
+		for i := idx; i >= 0; i-- {
+			if host[i] == ':' {
+				host = host[:i]
+				break
+			}
+		}
+	}
+	if host == "" {
+		host = "os.crazyaigc.com"
+	}
+
+	// 检测是否在微信内置浏览器
+	userAgent := c.GetHeader("User-Agent")
+	isInWeChat := isWechatBrowser(userAgent)
+
+	if isInWeChat {
+		// 微信内置浏览器：使用公众号授权
+		if cfg.WeChatMPAppID == "" {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"error":   "公众号配置缺失",
+			})
+			return
+		}
+
+		redirectURI := fmt.Sprintf("https://%s/api/auth/wechat/mp-redirect", host)
+		state := callbackURL
+		authURL := fmt.Sprintf(
+			"https://open.weixin.qq.com/connect/oauth2/authorize?appid=%s&redirect_uri=%s&response_type=code&scope=snsapi_userinfo&state=%s#wechat_redirect",
+			cfg.WeChatMPAppID,
+			redirectURI,
+			state,
+		)
+		c.Redirect(http.StatusFound, authURL)
+	} else {
+		// PC 浏览器：使用开放平台扫码登录
+		if cfg.WeChatAppID == "" {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"error":   "微信开放平台配置缺失",
+			})
+			return
+		}
+
+		redirectURI := fmt.Sprintf("https://%s/api/auth/wechat/open-platform-redirect", host)
+		state := callbackURL
+		authURL := fmt.Sprintf(
+			"https://open.weixin.qq.com/connect/qrconnect?appid=%s&redirect_uri=%s&response_type=code&scope=snsapi_login&state=%s#wechat_redirect",
+			cfg.WeChatAppID,
+			redirectURI,
+			state,
+		)
+		c.Redirect(http.StatusFound, authURL)
+	}
+}
+
+// isValidCallbackURL 验证回调 URL
+func isValidCallbackURL(callbackURL string) bool {
+	// 允许根路径
+	if callbackURL == "/" {
+		return true
+	}
+
+	cfg := config.Load()
+
+	// 解析 URL
+	parsedURL, err := url.Parse(callbackURL)
+	if err != nil {
+		return false
+	}
+
+	hostname := parsedURL.Hostname()
+
+	// 解析白名单域名
+	allowedDomains := strings.Split(cfg.AllowedCallbackDomains, ",")
+	for i := range allowedDomains {
+		allowedDomains[i] = strings.TrimSpace(allowedDomains[i])
+	}
+
+	// 检查域名是否在白名单中
+	for _, allowedDomain := range allowedDomains {
+		// 精确匹配
+		if hostname == allowedDomain {
+			// 非 localhost 必须使用 HTTPS
+			if hostname != "localhost" && parsedURL.Scheme != "https" {
+				return false
+			}
+			return true
+		}
+
+		// 通配符匹配 (*.example.com)
+		if strings.HasPrefix(allowedDomain, "*.") {
+			baseDomain := allowedDomain[2:]
+			if hostname == baseDomain || strings.HasSuffix(hostname, "."+baseDomain) {
+				// 非 localhost 必须使用 HTTPS
+				if hostname != "localhost" && parsedURL.Scheme != "https" {
+					return false
+				}
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
 // WeChatCallback 微信公众号回调
 func WeChatCallback(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -144,6 +328,43 @@ func WeChatCallback(db *gorm.DB) gin.HandlerFunc {
 // OpenPlatformCallback 开放平台回调
 func OpenPlatformCallback(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// 尝试从多个地方获取code参数
+		code := c.Query("code")
+
+		// 如果URL参数中没有code，尝试从POST body获取
+		if code == "" && c.Request.Method == "POST" {
+			var req struct {
+				Code string `json:"code"`
+			}
+			if err := c.ShouldBindJSON(&req); err == nil {
+				code = req.Code
+			}
+		}
+
+		state := c.Query("state")
+
+		if code == "" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"error":   "缺少授权码",
+			})
+			return
+		}
+
+		// 重定向到前端，带上授权码
+		callbackURL := state
+		if callbackURL == "" {
+			callbackURL = "/admin/dashboard"
+		}
+
+		redirectURL := callbackURL + "?code=" + code + "&type=open"
+		c.Redirect(http.StatusFound, redirectURL)
+	}
+}
+
+// WeChatMPRedirect 公众号授权重定向（接收微信回调）
+func WeChatMPRedirect(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		code := c.Query("code")
 		state := c.Query("state")
 
@@ -158,7 +379,32 @@ func OpenPlatformCallback(db *gorm.DB) gin.HandlerFunc {
 		// 重定向到前端，带上授权码
 		callbackURL := state
 		if callbackURL == "" {
-			callbackURL = "http://localhost:3000/auth-complete"
+			callbackURL = "/admin/dashboard"
+		}
+
+		redirectURL := callbackURL + "?code=" + code + "&type=mp"
+		c.Redirect(http.StatusFound, redirectURL)
+	}
+}
+
+// OpenPlatformRedirect 开放平台授权重定向（接收微信回调）
+func OpenPlatformRedirect(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		code := c.Query("code")
+		state := c.Query("state")
+
+		if code == "" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"error":   "缺少授权码",
+			})
+			return
+		}
+
+		// 重定向到前端，带上授权码
+		callbackURL := state
+		if callbackURL == "" {
+			callbackURL = "/admin/dashboard"
 		}
 
 		redirectURL := callbackURL + "?code=" + code + "&type=open"

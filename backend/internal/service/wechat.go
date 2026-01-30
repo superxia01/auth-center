@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"time"
 
 	"github.com/keenchase/auth-center/internal/config"
 	"github.com/keenchase/auth-center/internal/models"
@@ -75,19 +74,17 @@ func GetWeChatAccessToken(cfg *config.Config, code string, isMP bool) (*WeChatOA
 
 // GetWeChatUserInfo 获取微信用户信息
 func GetWeChatUserInfo(accessToken, openID string, isMP bool) (map[string]interface{}, error) {
-	var apiURL string
-	if isMP {
-		apiURL = "https://api.weixin.qq.com/sns/userinfo"
-	} else {
-		apiURL = "https://api.open.weixin.qq.com/sns/userinfo"
+	// 开放平台扫码登录：access_token 响应中已包含用户信息，无需额外调用
+	if !isMP {
+		return nil, nil
 	}
 
+	// 公众号授权：需要调用 userinfo 接口获取详细信息（包含 unionid）
+	apiURL := "https://api.weixin.qq.com/sns/userinfo"
 	params := url.Values{}
 	params.Set("access_token", accessToken)
 	params.Set("openid", openID)
-	if isMP {
-		params.Set("lang", "zh_CN")
-	}
+	params.Set("lang", "zh_CN")
 
 	resp, err := http.Get(apiURL + "?" + params.Encode())
 	if err != nil {
@@ -116,14 +113,12 @@ func GetWeChatUserInfo(accessToken, openID string, isMP bool) (map[string]interf
 func FindOrCreateUserByUnionID(db *gorm.DB, unionID string, openID, appID, accountType string, userInfo map[string]interface{}) (*models.User, error) {
 	// 先查找用户
 	var user models.User
-	err := db.Where("unionId = ?", unionID).First(&user).Error
+	err := db.Where("union_id = ?", unionID).First(&user).Error
 
 	if err == gorm.ErrRecordNotFound {
 		// 用户不存在，创建新用户
-		userID := fmt.Sprintf("user-%s", time.Now().Format("20060102150405"))
-
+		// 让数据库自动生成 UUID（通过 gen_random_uuid()）
 		user = models.User{
-			UserID:  userID,
 			UnionID: unionID,
 		}
 
@@ -135,7 +130,7 @@ func FindOrCreateUserByUnionID(db *gorm.DB, unionID string, openID, appID, accou
 	// 创建或更新用户账户
 	var account models.UserAccount
 	err = db.Where(
-		"userId = ? AND provider = ? AND appId = ? AND openId = ?",
+		"user_id = ? AND provider = ? AND app_id = ? AND open_id = ?",
 		user.UserID, "wechat", appID, openID,
 	).First(&account).Error
 
@@ -146,8 +141,8 @@ func FindOrCreateUserByUnionID(db *gorm.DB, unionID string, openID, appID, accou
 			AppID:     appID,
 			OpenID:    openID,
 			Type:      accountType,
-			Nickname:  getStringValue(userInfo, "nickname"),
-			AvatarURL: getStringValue(userInfo, "headimgurl"),
+			Nickname:  GetStringValue(userInfo, "nickname"),
+			AvatarURL: GetStringValue(userInfo, "headimgurl"),
 		}
 
 		if err := db.Create(&account).Error; err != nil {
@@ -158,8 +153,8 @@ func FindOrCreateUserByUnionID(db *gorm.DB, unionID string, openID, appID, accou
 	return &user, nil
 }
 
-// getStringValue 从 map 中安全地获取字符串值
-func getStringValue(m map[string]interface{}, key string) string {
+// GetStringValue 从 map 中安全地获取字符串值
+func GetStringValue(m map[string]interface{}, key string) string {
 	if val, ok := m[key]; ok {
 		if str, ok := val.(string); ok {
 			return str

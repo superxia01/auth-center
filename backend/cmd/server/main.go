@@ -14,8 +14,8 @@ import (
 )
 
 func main() {
-	// 加载环境变量
-	if err := godotenv.Load("../.env"); err != nil {
+	// 加载环境变量（从当前目录）
+	if err := godotenv.Load(".env"); err != nil {
 		log.Printf("警告: 无法加载 .env 文件: %v", err)
 	}
 
@@ -37,7 +37,7 @@ func main() {
 	r := gin.Default()
 
 	// 全局中间件
-	r.Use(middleware.CORS())
+	r.Use(middleware.CORS(cfg))
 	r.Use(middleware.Logger())
 
 	// 健康检查
@@ -54,8 +54,11 @@ func main() {
 		// 认证相关
 		auth := api.Group("/auth")
 		{
-			auth.POST("/wechat/login", handler.WeChatLogin(db))
+			auth.GET("/wechat/login", handler.WeChatLogin(db))     // GET: 重定向到微信授权
+			auth.POST("/wechat/login", handler.WeChatLogin(db))    // POST: code 换 token
 			auth.GET("/wechat/callback", handler.WeChatCallback(db))
+			auth.GET("/wechat/mp-redirect", handler.WeChatMPRedirect(db))
+			auth.GET("/wechat/open-platform-redirect", handler.OpenPlatformRedirect(db))
 			auth.POST("/wechat/open-platform-callback", handler.OpenPlatformCallback(db))
 			auth.POST("/verify-token", handler.VerifyToken(db))
 			auth.GET("/user-info", middleware.Auth(db), handler.GetUserInfo(db))
@@ -66,11 +69,11 @@ func main() {
 		// 管理员功能
 		admin := api.Group("/admin")
 		admin.Use(middleware.Auth(db))
-		admin.Use(middleware.RequireRole(db, "SUPER_ADMIN"))
+		admin.Use(middleware.RequireAdmin(db))
 		{
 			admin.GET("/users", handler.GetUsers(db))
 			admin.POST("/set-phone-password", handler.SetPhonePassword(db))
-			admin.POST("/verify", handler.VerifyAdmin(db))
+			admin.GET("/verify", handler.VerifyAdmin(db))
 		}
 	}
 

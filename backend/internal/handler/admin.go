@@ -2,9 +2,9 @@ package handler
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/keenchase/auth-center/internal/config"
 	"github.com/keenchase/auth-center/internal/service"
 	"gorm.io/gorm"
 )
@@ -18,36 +18,30 @@ type GetUsersRequest struct {
 // GetUsersResponse 获取用户列表响应
 type GetUsersResponse struct {
 	Success bool        `json:"success"`
-	Data    []map[string]interface{} `json:"data"`
-	Total   int64       `json:"total"`
-	Page    int         `json:"page"`
-	PageSize int         `json:"pageSize"`
+	Data    interface{} `json:"data"`
 	Error   string      `json:"error,omitempty"`
 }
 
 // GetUsers 获取用户列表
 func GetUsers(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var req GetUsersRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, GetUsersResponse{
-				Success: false,
-				Error:   "无效的请求参数",
-			})
-			return
+		// 从 query 参数获取分页信息，设置默认值
+		pageStr := c.DefaultQuery("page", "1")
+		pageSizeStr := c.DefaultQuery("pageSize", "10")
+
+		// 转换为整数
+		page, err := strconv.Atoi(pageStr)
+		if err != nil || page < 1 {
+			page = 1
 		}
 
-		// 参数验证
-		if req.Page < 1 || req.PageSize < 1 || req.PageSize > 100 {
-			c.JSON(http.StatusBadRequest, GetUsersResponse{
-				Success: false,
-				Error:   "分页参数无效",
-			})
-			return
+		pageSize, err := strconv.Atoi(pageSizeStr)
+		if err != nil || pageSize < 1 || pageSize > 100 {
+			pageSize = 10
 		}
 
 		// 获取用户列表
-		users, total, err := service.GetUsers(db, req.Page, req.PageSize)
+		users, total, err := service.GetUsers(db, page, pageSize)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, GetUsersResponse{
 				Success: false,
@@ -56,12 +50,25 @@ func GetUsers(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// 构建统计信息
+		stats := map[string]interface{}{
+			"total":        total,
+			"withPassword": 0, // TODO: 从数据库统计
+			"wechatLogin":   total, // 目前所有用户都是微信登录
+		}
+
+		// 返回嵌套的数据结构（前端期望的格式）
 		c.JSON(http.StatusOK, GetUsersResponse{
 			Success: true,
-			Data:    users,
-			Total:   total,
-			Page:    req.Page,
-			PageSize: req.PageSize,
+			Data: map[string]interface{}{
+				"users":     users,
+				"statistics": stats,
+				"pagination": map[string]interface{}{
+					"total":     total,
+					"page":      page,
+					"pageSize":  pageSize,
+				},
+			},
 		})
 	}
 }
@@ -100,57 +107,17 @@ func SetPhonePassword(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-// VerifyAdminRequest 验证管理员请求
-type VerifyAdminRequest struct {
-	UnionID string `json:"unionId" binding:"required"`
-}
-
 // VerifyAdmin 验证管理员
+// 注意：此路由已被 RequireAdmin 中间件保护，能到达这里的都是管理员
 func VerifyAdmin(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var req VerifyAdminRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"success": false,
-				"error":   "无效的请求参数",
-			})
-			return
-		}
-
-		cfg := config.Load()
-
-		// 检查是否是管理员
-		if cfg.AdminWeChatOpenID == "" {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"success": false,
-				"error":   "管理员未配置",
-			})
-			return
-		}
-
-		// 验证 UnionID 是否匹配
-		var user struct {
-			UnionID string `json:"unionId"`
-		}
-		if err := db.Table("users").Where("unionId = ?", req.UnionID).First(&user).Error; err != nil {
-			c.JSON(http.StatusNotFound, gin.H{
-				"success": false,
-				"error":   "用户不存在",
-			})
-			return
-		}
-
-		if user.UnionID != cfg.AdminWeChatOpenID {
-			c.JSON(http.StatusForbidden, gin.H{
-				"success": false,
-				"error":   "无管理员权限",
-			})
-			return
-		}
+		// 获取用户信息
+		userID := c.GetString("userId")
 
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
 			"isAdmin": true,
+			"userId":  userID,
 		})
 	}
 }

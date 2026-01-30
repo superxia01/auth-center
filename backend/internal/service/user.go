@@ -34,9 +34,9 @@ func SetPhonePassword(db *gorm.DB, userID, phoneNumber, password string) error {
 	}
 
 	// 更新用户
-	return db.Model(&models.User{}).Where("userId = ?", userID).Updates(map[string]interface{}{
-		"phoneNumber": phoneNumber,
-		"passwordHash": string(hashedPassword),
+	return db.Model(&models.User{}).Where("user_id = ?", userID).Updates(map[string]interface{}{
+		"phone_number":  phoneNumber,
+		"password_hash": string(hashedPassword),
 	}).Error
 }
 
@@ -50,22 +50,54 @@ func GetUsers(db *gorm.DB, page, pageSize int) ([]map[string]interface{}, int64,
 		return nil, 0, err
 	}
 
-	// 分页查询
+	// 分页查询用户，预加载账号信息
 	offset := (page - 1) * pageSize
-	if err := db.Limit(pageSize).Offset(offset).Find(&users).Error; err != nil {
+	if err := db.Preload("Accounts").Limit(pageSize).Offset(offset).Find(&users).Error; err != nil {
 		return nil, 0, err
 	}
 
-	// 转换为返回格式
+	// 转换为返回格式，包含所有字段
 	result := make([]map[string]interface{}, len(users))
 	for i, user := range users {
+		// 构建账号信息列表
+		accounts := make([]map[string]interface{}, len(user.Accounts))
+		for j, acc := range user.Accounts {
+			accounts[j] = map[string]interface{}{
+				"id":         acc.ID,
+				"provider":   acc.Provider,
+				"appId":      acc.AppID,
+				"openId":     acc.OpenID,
+				"type":       acc.Type,
+				"nickname":   acc.Nickname,
+				"avatarUrl":  acc.AvatarURL,
+				"createdAt":  acc.CreatedAt,
+			}
+		}
+
+		// 检查登录方式
+		loginMethods := map[string]bool{
+			"wechat":  false,
+			"password": false,
+		}
+		hasPassword := user.PasswordHash != ""
+		if hasPassword {
+			loginMethods["password"] = true
+		}
+		for _, acc := range user.Accounts {
+			if acc.Provider == "wechat" {
+				loginMethods["wechat"] = true
+			}
+		}
+
 		result[i] = map[string]interface{}{
-			"userId":      user.UserID,
-			"unionId":     user.UnionID,
-			"phoneNumber": user.PhoneNumber,
-			"email":       user.Email,
-			"createdAt":  user.CreatedAt,
-			"updatedAt":  user.UpdatedAt,
+			"userId":       user.UserID,
+			"unionId":      user.UnionID,
+			"phoneNumber":  user.PhoneNumber,
+			"email":        user.Email,
+			"createdAt":    user.CreatedAt,
+			"updatedAt":    user.UpdatedAt,
+			"accounts":     accounts,
+			"loginMethods": loginMethods,
 		}
 	}
 

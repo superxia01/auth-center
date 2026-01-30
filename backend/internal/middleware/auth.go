@@ -68,10 +68,69 @@ func Auth(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-// RequireRole 要求特定角色
-func RequireRole(db *gorm.DB, role string) gin.HandlerFunc {
+// RequireAdmin 要求管理员权限
+// 通过验证用户的微信 OpenID 是否匹配配置中的管理员 OpenID
+func RequireAdmin(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// TODO: 实现角色验证逻辑
+		userID := c.GetString("userId")
+		if userID == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"success": false,
+				"error":   "未授权",
+			})
+			c.Abort()
+			return
+		}
+
+		// 加载配置获取管理员 OpenID
+		cfg := config.Load()
+		adminOpenID := cfg.AdminWeChatOpenID
+
+		if adminOpenID == "" {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"error":   "管理员配置缺失",
+			})
+			c.Abort()
+			return
+		}
+
+		// 查询用户的微信账号 OpenID
+		var account struct {
+			OpenID string `gorm:"column:open_id"`
+		}
+		err := db.Table("user_accounts").
+			Select("open_id").
+			Where("user_id = ? AND provider = 'wechat'", userID).
+			First(&account).Error
+
+		if err != nil {
+			c.JSON(http.StatusForbidden, gin.H{
+				"success": false,
+				"error":   "无管理员权限",
+			})
+			c.Abort()
+			return
+		}
+
+		// 添加日志
+		c.Header("X-User-OpenID", account.OpenID)
+		c.Header("X-Admin-OpenID", adminOpenID)
+
+		// 验证 OpenID 是否匹配管理员
+		if account.OpenID != adminOpenID {
+			c.JSON(http.StatusForbidden, gin.H{
+				"success": false,
+				"error":   "无管理员权限",
+				"debug": gin.H{
+					"userOpenID":  account.OpenID,
+					"adminOpenID": adminOpenID,
+				},
+			})
+			c.Abort()
+			return
+		}
+
 		c.Next()
 	}
 }

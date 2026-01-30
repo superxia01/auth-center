@@ -99,7 +99,7 @@ func GetUserByToken(db *gorm.DB, token string) (*models.User, error) {
 	}
 
 	var user models.User
-	if err := db.Where("userId = ?", session.UserID).First(&user).Error; err != nil {
+	if err := db.Where("user_id = ?", session.UserID).First(&user).Error; err != nil {
 		return nil, err
 	}
 
