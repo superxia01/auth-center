@@ -850,12 +850,32 @@ IP: 47.110.82.96:5432
 SSH别名: hangzhou-ali
 ```
 
-**统一连接方式**：
+**数据库密码标准（V3.0 统一配置）**：
+
+| 用户 | 密码 | 用途 | 数据库 |
+|------|------|------|--------|
+| **nexus** (超级用户) | `nexus123` | 管理员、统一连接 | 所有数据库 |
+| auth_center_user | `AuthCenter2026!` | 账号中心 | auth_center_db |
+| pr_business_user | `PrBusiness2026!` | PR 系统 | pr_business_db |
+| pixel_user | `PixelBusiness2026!` | Pixel 系统 | pixel_business_db |
+| study_user | (待设置) | Study 系统 | study_business_db |
+| crm_user | (待设置) | CRM 系统 | crm_business_db |
+
+**连接字符串格式**：
+```bash
+# 超级用户连接（推荐用于所有 V3.0 系统）
+postgresql://nexus:nexus123@47.110.82.96:5432/数据库名?sslmode=disable
+
+# 业务系统专用用户
+postgresql://auth_center_user:AuthCenter2026!@47.110.82.96:5432/auth_center_db?sslmode=disable
+postgresql://pr_business_user:PrBusiness2026!@47.110.82.96:5432/pr_business_db?sslmode=disable
+postgresql://pixel_user:PixelBusiness2026!@47.110.82.96:5432/pixel_business_db?sslmode=disable
 ```
-上海服务器 (101.35.120.199)
-    ↓ SSH隧道
-localhost:5432 → 47.110.82.96:5432
-```
+
+**⚠️ 重要提示**：
+- 所有密码已在杭州服务器上设置完成（2026-01-31）
+- 上海服务器可以直接连接（无需 SSH 隧道）
+- 如需使用 SSH 隧道，需要先配置上海 → 杭州的 SSH 密钥认证
 
 **各系统数据库**：
 ```
@@ -1889,7 +1909,8 @@ sudo systemctl reload nginx
 // 1. 引导用户跳转到业务系统的后端接口
 window.location.href = 'https://pr.crazyaigc.com/api/auth/wechat/login'
 
-// 用户全程都在 pr.crazyaigc.com，看不到 os.crazyaigc.com
+// 用户会短暂跳转到 os.crazyaigc.com（微信登录的标准流程）
+// 几秒后自动回到 pr.crazyaigc.com
 ```
 
 #### 后端部分（Go 示例）
@@ -1903,35 +1924,51 @@ func WechatLogin(c *gin.Context) {
         "https://os.crazyaigc.com/api/auth/wechat/login?callbackUrl=%s",
         url.QueryEscape(callbackUrl),
     )
+    // 重定向到账号中心（用户会短暂看到 os.crazyaigc.com）
     c.Redirect(302, authCenterURL)
 }
 
-// 3. 业务系统后端：接收回调（代理接口）
-// GET /api/auth/callback
+// 3. 业务系统后端：接收微信授权回调
+// GET /api/auth/callback?code=xxx&type=open
 func AuthCallback(c *gin.Context) {
-    userId := c.Query("userId")
-    token := c.Query("token")
+    code := c.Query("code")        // 微信授权码
+    loginType := c.Query("type")   // "open" (开放平台) 或 "mp" (公众号)
 
-    // 验证 token
-    verifyResp, _ := http.PostForm(
-        "https://os.crazyaigc.com/api/auth/verify-token",
-        url.Values{"token": {token}},
+    if code == "" {
+        c.JSON(400, gin.H{"error": "缺少code参数"})
+        return
+    }
+
+    // 调用账号中心的微信登录API，用code换取token
+    // POST https://os.crazyaigc.com/api/auth/wechat/login
+    // Body: {"code": "xxx", "type": "open"}
+    loginResp, _ := http.Post(
+        "https://os.crazyaigc.com/api/auth/wechat/login",
+        "application/json",
+        strings.NewReader(fmt.Sprintf(`{"code":"%s","type":"%s"}`, code, loginType)),
     )
 
     var result struct {
         Success bool `json:"success"`
         Data struct {
-            Valid  bool   `json:"valid"`
-            UserID string `json:"userId"`
+            UserID    string `json:"userId"`
+            Token     string `json:"token"`
+            UnionID   string `json:"unionId"`
+            PhoneNumber string `json:"phoneNumber"`
         } `json:"data"`
     }
-    json.NewDecoder(verifyResp.Body).Decode(&result)
+    json.NewDecoder(loginResp.Body).Decode(&result)
+
+    if !result.Success {
+        c.JSON(401, gin.H{"error": "登录失败"})
+        return
+    }
 
     // 创建/获取本地用户
     user := findOrCreateUser(result.Data.UserID)
 
-    // 设置 session
-    setSession(c, user)
+    // 设置 session（存储 userId 和 token）
+    setSession(c, user, result.Data.Token)
 
     // 跳转到业务系统首页
     c.Redirect(302, "/dashboard")
@@ -1944,17 +1981,26 @@ func AuthCallback(c *gin.Context) {
 1. 用户在 pr.crazyaigc.com 点击"微信登录"
    → 前端跳转到 /api/auth/wechat/login
 
-2. 业务系统后端转发请求到账号中心
-   → 后端到后端调用（用户看不到）
+2. 业务系统后端重定向到账号中心
+   → 用户会短暂看到 os.crazyaigc.com（正常现象）
 
-3. 用户完成微信授权
-   → 回调到 pr.crazyaigc.com/api/auth/callback
+3. 账号中心重定向到微信授权页面
+   → 用户看到 open.weixin.qq.com（微信官方页面）
 
-4. 业务系统后端接收 userId + token
-   → 验证 token
+4. 用户扫码/授权，微信回调到账号中心
+   → 账号中心处理授权，获取用户信息
+
+5. 账号中心回调到 pr.crazyaigc.com/api/auth/callback
+   → 回调参数: code + type
+
+6. 业务系统后端接收 code，调用账号中心 API
+   → 验证 code
+   → 获取 userId + token
    → 创建本地用户
    → 设置 session
    → 跳转到 /dashboard
+
+7. 用户回到 pr.crazyaigc.com，登录完成 ✅
 ```
 
 ### 重要说明
@@ -1967,30 +2013,34 @@ func AuthCallback(c *gin.Context) {
 
 **业务系统集成方式**：
 - ✅ 后端调用账号中心的 **后端 API**
-- ✅ 用户全程在业务系统的网站完成操作
-- ✅ 用户看不到 os.crazyaigc.com
+- ✅ 用户主要时间在业务系统的网站完成操作
+- ✅ 用户最终在业务系统的域名停留
 
-**⚠️ 重要：用户不可见原则**
+**⚠️ 重要：微信登录的域名跳转说明**
 
-为了保持用户体验，**普通用户不应该看到 os.crazyaigc.com 域名**。业务系统必须通过**后端代理**实现：
+微信登录过程中，用户**会短暂看到**其他域名，这是**正常且无法避免的**：
 
 ```
-✅ 正确方式（用户看不到账号中心）：
+标准微信登录流程（所有系统都一样）：
 用户在 pr.crazyaigc.com
   → 点击登录
-  → pr.crazyaigc.com/api/auth/wechat/login（业务系统后端代理）
-  → 微信授权
-  → pr.crazyaigc.com/api/auth/callback（业务系统后端接收）
-  → pr.crazyaigc.com/dashboard
-
-❌ 错误方式（用户会跳到账号中心）：
-用户在 pr.crazyaigc.com
-  → 点击登录
-  → os.crazyaigc.com/api/auth/wechat/login（用户看到了账号中心！）
-  → 微信授权
+  → os.crazyaigc.com（短暂显示，几秒钟）
+  → open.weixin.qq.com（微信官方授权页面，用户操作）
+  → os.crazyaigc.com（处理回调，极短暂）
   → pr.crazyaigc.com/api/auth/callback
-  → pr.crazyaigc.com/dashboard
+  → pr.crazyaigc.com/dashboard（登录完成，用户停留）✅
 ```
+
+**为什么用户会看到 os.crazyaigc.com？**
+1. 微信授权需要通过账号中心进行（架构设计）
+2. 浏览器重定向会让用户看到中间域名
+3. 这是**所有第三方登录的标准流程**（微信、QQ、支付宝等）
+
+**用户体验优化建议**：
+- ✅ 页面加载时显示"正在跳转到微信授权..."提示
+- ✅ 授权完成后快速跳转回业务系统
+- ✅ 用户主要时间都在业务系统域名操作
+- ❌ 不要尝试用 iframe 隐藏（微信安全限制会阻止）
 
 **用户注册流程**：
 1. 用户**必须先通过微信登录**，系统自动创建账号
