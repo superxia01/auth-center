@@ -713,54 +713,201 @@ IP: 47.110.82.96
 
 **⚠️ 重要：数据库连接配置规范**
 
+**网络架构限制**：
+- 上海服务器无法直接连接到杭州服务器的 `47.110.82.96:5432`
+- **必须通过 SSH 隧道连接**
+
+**统一配置（所有V3.0系统）**：
+```bash
+主机:   localhost (通过SSH隧道)
+端口:   5432
+用户:   nexus (超级用户)
+密码:   nexus123
+SSL:    disable
+连接字符串: postgresql://nexus:nexus123@localhost:5432/数据库名?sslmode=disable
+```
+
 **强制规则**：
-- ✅ **必须使用 `sslmode=disable`**（PostgreSQL容器不支持SSL）
-- ✅ **必须使用专用的数据库用户**（禁止使用nexus超级用户）
-- ✅ **必须直接连接到 `47.110.82.96:5432`**（禁止使用SSH隧道）
-- ✅ **连接字符串格式**：`postgresql://用户名:密码@47.110.82.96:5432/数据库名?sslmode=disable`
+- ✅ **必须使用 `localhost:5432`**（通过SSH隧道）
+- ✅ **必须使用 `nexus` 用户**
+- ✅ **必须使用 `sslmode=disable`**
+- ✅ **必须先设置SSH隧道**（见下方）
 
 **错误示例（不要这样配置）**：
 ```bash
-# ❌ 错误1：使用错误的SSL模式
-DATABASE_URL=postgresql://user:pass@47.110.82.96:5432/db?sslmode=require
-DATABASE_URL=postgresql://user:pass@47.110.82.96:5432/db?sslmode=prefer
-# 结果：FATAL: server does not support SSL, but SSL was required
+# ❌ 错误1：直连杭州服务器（网络不通）
+DATABASE_URL=postgresql://user:pass@47.110.82.96:5432/db?sslmode=disable
+# 结果：连接超时
 
-# ❌ 错误2：使用nexus超级用户
-DATABASE_URL=postgresql://nexus:pass@47.110.82.96:5432/db?sslmode=disable
-# 结果：违反安全规范，权限过大
-
-# ❌ 错误3：使用SSH隧道
-DATABASE_URL=postgresql://user:pass@localhost:5433/db?sslmode=disable
-# 结果：部署复杂，端口冲突
+# ❌ 错误2：使用专用数据库用户
+DATABASE_URL=postgresql://pr_business_user:pass@localhost:5432/db?sslmode=disable
+# 结果：密码认证失败（用户权限问题）
 ```
 
 **正确配置**：
 ```bash
-# ✅ 正确：使用专用用户 + disable SSL
-DATABASE_URL=postgresql://pr_business_user:PrBusiness2026!@47.110.82.96:5432/pr_business_db?sslmode=disable
-DATABASE_URL=postgresql://pixel_user:PixelBusiness2026!@47.110.82.96:5432/pixel_business_db?sslmode=disable
-DATABASE_URL=postgresql://auth_center_user:AuthCenter2026!@47.110.82.96:5432/auth_center_db?sslmode=disable
+# ✅ 正确：通过SSH隧道 + nexus用户
+DATABASE_URL=postgresql://nexus:nexus123@localhost:5432/数据库名?sslmode=disable
 ```
 
-**标准连接信息**：
-```
-数据库服务器: 47.110.82.96:5432
-SSL支持:      不支持（必须使用 sslmode=disable）
+---
 
-各系统数据库用户：
-├─ auth_center_user  (auth_center_db)     - 密码: AuthCenter2026!
-├─ pr_business_user   (pr_business_db)     - 密码: PrBusiness2026!
-├─ pixel_user        (pixel_business_db)   - 密码: PixelBusiness2026!
-├─ pr_user           (pr_business_db)       - 密码: PrBusiness2026!
-├─ study_user        (study_business_db)    - 密码: StudyBusiness2026!
-└─ crm_user          (crm_business_db)      - 密码: CrmBusiness2026!
+### SSH隧道设置（必须执行）
+
+**在上海服务器上执行**（首次部署时执行一次）：
+
+```bash
+# 1. 创建systemd服务
+sudo tee /etc/systemd/system/pg-tunnel.service <<EOF
+[Unit]
+Description=PostgreSQL SSH Tunnel to Hangzhou
+After=network.target
+
+[Service]
+User=ubuntu
+ExecStart=/usr/bin/ssh -N -L 5432:localhost:5432 hangzhou-ali
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# 2. 启动服务
+sudo systemctl daemon-reload
+sudo systemctl enable pg-tunnel
+sudo systemctl start pg-tunnel
+
+# 3. 验证隧道状态
+sudo systemctl status pg-tunnel
+
+# 4. 测试连接
+psql -h localhost -p 5432 -U nexus -d postgres -c 'SELECT 1;'
+# 应该输出: ?column?
+#              ----------
+#                      1
 ```
 
-**常见错误排查**：
-- ❌ `password authentication failed for user "xxx"` → 检查用户名和密码是否正确
-- ❌ `server does not support SSL, but SSL was required` → 检查是否使用 `sslmode=disable`
-- ❌ `connection refused` → 检查主机和端口是否正确（47.110.82.96:5432）
+**SSH隧道说明**：
+- ✅ 后台运行，自动重连
+- ✅ 开机自动启动
+- ✅ 将本地 5432 端口转发到杭州服务器的 5432 端口
+- ✅ 所有应用通过 `localhost:5432` 连接
+
+---
+
+### 各系统标准配置
+
+#### 1. 账号中心
+
+**文件**: `/Users/xia/Documents/GitHub/auth-center/.env`
+
+```bash
+AUTH_CENTER_DATABASE_URL="postgresql://nexus:nexus123@localhost:5432/auth_center_db?sslmode=disable"
+```
+
+#### 2. PR 业务系统
+
+**文件**: `/Users/xia/Documents/GitHub/pr-business/backend/.env.production`
+
+```bash
+DATABASE_URL=postgresql://nexus:nexus123@localhost:5432/pr_business_db?sslmode=disable
+```
+
+#### 3. Pixel 系统
+
+**文件**: `/Users/xia/Documents/GitHub/superpixel/backend/configs/config.yaml`
+
+```yaml
+database:
+  host: localhost
+  port: 5432
+  user: nexus
+  password: nexus123
+  dbname: pixel_business_db
+  sslmode: disable
+```
+
+#### 4. Study 系统（如有后端）
+
+```bash
+DATABASE_URL=postgresql://nexus:nexus123@localhost:5432/study_business_db?sslmode=disable
+```
+
+#### 5. CRM 系统（如有后端）
+
+```bash
+DATABASE_URL=postgresql://nexus:nexus123@localhost:5432/crm_business_db?sslmode=disable
+```
+
+---
+
+### 数据库信息汇总
+
+**杭州服务器**：
+```
+IP: 47.110.82.96:5432
+SSH别名: hangzhou-ali
+```
+
+**统一连接方式**：
+```
+上海服务器 (101.35.120.199)
+    ↓ SSH隧道
+localhost:5432 → 47.110.82.96:5432
+```
+
+**各系统数据库**：
+```
+auth_center_db    - 账号中心
+pr_business_db    - PR业务系统
+pixel_business_db - AI生图系统
+study_business_db  - 知识库系统
+crm_business_db    - 客户管理系统
+```
+
+---
+
+### 部署验证检查清单
+
+部署后必须验证：
+
+- [ ] SSH隧道服务运行中：`sudo systemctl status pg-tunnel`
+- [ ] 测试SSH隧道：`psql -h localhost -p 5432 -U nexus -d postgres -c 'SELECT 1;'`
+- [ ] 后端日志显示"数据库连接成功"
+- [ ] 应用功能正常，无数据库错误
+
+---
+
+### 常见错误排查
+
+**错误1：连接超时**
+```
+connection timeout
+```
+原因：SSH隧道未启动
+解决：`sudo systemctl start pg-tunnel`
+
+**错误2：密码认证失败**
+```
+password authentication failed for user "nexus"
+```
+原因：配置文件中密码错误
+解决：确保密码是 `nexus123`
+
+**错误3：连接被拒绝**
+```
+connection refused
+```
+原因：SSH隧道未启动或端口占用
+解决：检查 `sudo systemctl status pg-tunnel`
+
+**错误4：SSL错误**
+```
+server does not support SSL
+```
+原因：使用了 `sslmode=require` 或 `prefer`
+解决：使用 `sslmode=disable`
 
 ### 数据库隔离策略
 
