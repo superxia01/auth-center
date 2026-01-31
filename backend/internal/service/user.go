@@ -10,7 +10,7 @@ import (
 // VerifyPassword 验证密码
 func VerifyPassword(db *gorm.DB, phoneNumber, password string) (*models.User, error) {
 	var user models.User
-	if err := db.Where("phoneNumber = ?", phoneNumber).First(&user).Error; err != nil {
+	if err := db.Where("phone_number = ?", phoneNumber).First(&user).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, nil // 用户不存在
 		}
