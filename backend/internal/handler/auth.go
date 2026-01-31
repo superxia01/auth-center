@@ -416,25 +416,42 @@ func OpenPlatformRedirect(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// 完成微信登录流程
-		cfg := config.Load()
-		result, err := service.CompleteWeChatLogin(db, cfg, code, false) // isMP = false
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
+		// 验证回调URL是否在白名单中
+		callbackURL := state
+		if callbackURL == "" {
+			c.JSON(http.StatusBadRequest, gin.H{
 				"success": false,
-				"error":   "登录失败: " + err.Error(),
+				"error":   "缺少回调地址",
 			})
 			return
 		}
 
-		// 重定向到业务系统，带上 userId 和 token
-		callbackURL := state
-		if callbackURL == "" {
-			callbackURL = "/admin/dashboard"
+		if !isValidCallbackURL(callbackURL) {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"error":   "回调 URL 不在允许的域名列表中",
+			})
+			return
 		}
 
-		redirectURL := callbackURL + "?userId=" + result.UserID + "&token=" + result.Token
-		c.Redirect(http.StatusFound, redirectURL)
+		// 重定向到业务系统，带上 code 和 type
+		// 业务系统将用 code 调用我们的 API 获取用户信息
+		u, err := url.Parse(callbackURL)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"error":   "无效的回调 URL",
+			})
+			return
+		}
+
+		// 添加 code 和 type 参数
+		query := u.Query()
+		query.Set("code", code)
+		query.Set("type", "open") // 标识为开放平台登录
+		u.RawQuery = query.Encode()
+
+		c.Redirect(http.StatusFound, u.String())
 	}
 }
 
