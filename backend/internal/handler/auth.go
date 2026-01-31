@@ -380,13 +380,24 @@ func WeChatMPRedirect(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// 重定向到前端，带上授权码
+		// 完成微信登录流程
+		cfg := config.Load()
+		result, err := service.CompleteWeChatLogin(db, cfg, code, true) // isMP = true
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"error":   "登录失败: " + err.Error(),
+			})
+			return
+		}
+
+		// 重定向到业务系统，带上 userId 和 token
 		callbackURL := state
 		if callbackURL == "" {
 			callbackURL = "/admin/dashboard"
 		}
 
-		redirectURL := callbackURL + "?code=" + code + "&type=mp"
+		redirectURL := callbackURL + "?userId=" + result.UserID + "&token=" + result.Token
 		c.Redirect(http.StatusFound, redirectURL)
 	}
 }
@@ -405,13 +416,24 @@ func OpenPlatformRedirect(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// 重定向到前端，带上授权码
+		// 完成微信登录流程
+		cfg := config.Load()
+		result, err := service.CompleteWeChatLogin(db, cfg, code, false) // isMP = false
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"error":   "登录失败: " + err.Error(),
+			})
+			return
+		}
+
+		// 重定向到业务系统，带上 userId 和 token
 		callbackURL := state
 		if callbackURL == "" {
 			callbackURL = "/admin/dashboard"
 		}
 
-		redirectURL := callbackURL + "?code=" + code + "&type=open"
+		redirectURL := callbackURL + "?userId=" + result.UserID + "&token=" + result.Token
 		c.Redirect(http.StatusFound, redirectURL)
 	}
 }

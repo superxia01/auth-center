@@ -162,3 +162,89 @@ func GetStringValue(m map[string]interface{}, key string) string {
 	}
 	return ""
 }
+
+// CompleteWeChatLoginResult 完成微信登录的结果
+type CompleteWeChatLoginResult struct {
+	UserID string
+	Token  string
+}
+
+// CompleteWeChatLogin 完成微信登录流程
+// 1. 获取微信 Access Token
+// 2. 获取用户信息
+// 3. 创建或更新用户
+// 4. 生成 JWT Token
+// 5. 创建会话
+// 6. 更新最后登录时间
+func CompleteWeChatLogin(db *gorm.DB, cfg *config.Config, code string, isMP bool) (*CompleteWeChatLoginResult, error) {
+	// 1. 获取微信 Access Token
+	wxResp, err := GetWeChatAccessToken(cfg, code, isMP)
+	if err != nil {
+		return nil, fmt.Errorf("获取微信 Access Token 失败: %w", err)
+	}
+
+	// 2. 获取用户信息（仅公众号需要调用此接口）
+	userInfo, err := GetWeChatUserInfo(wxResp.AccessToken, wxResp.OpenID, isMP)
+	if err != nil {
+		return nil, fmt.Errorf("获取用户信息失败: %w", err)
+	}
+
+	// 3. 提取 UnionID（注意：公众号和开放平台的 unionid 获取位置不同）
+	var unionID string
+	if isMP {
+		// 公众号：unionid 在 userinfo 响应中
+		unionID = GetStringValue(userInfo, "unionid")
+	} else {
+		// 开放平台：unionid 在 access_token 响应中
+		unionID = wxResp.UnionID
+	}
+
+	// 验证 unionID 不为空
+	if unionID == "" {
+		return nil, fmt.Errorf("无法获取用户唯一标识，请确保应用已绑定到微信开放平台")
+	}
+
+	// 4. 获取或创建用户
+	appID := cfg.WeChatAppID
+	if isMP {
+		appID = cfg.WeChatMPAppID
+	}
+
+	accountType := "web"
+	if isMP {
+		accountType = "mp"
+	}
+
+	user, err := FindOrCreateUserByUnionID(
+		db,
+		unionID,
+		wxResp.OpenID,
+		appID,
+		accountType,
+		userInfo,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("获取或创建用户失败: %w", err)
+	}
+
+	// 5. 生成 JWT Token
+	token, err := GenerateToken(user.UserID, cfg.JWTSecret)
+	if err != nil {
+		return nil, fmt.Errorf("生成 Token 失败: %w", err)
+	}
+
+	// 6. 创建会话
+	_, err = CreateSession(db, user.UserID, token, nil)
+	if err != nil {
+		return nil, fmt.Errorf("创建会话失败: %w", err)
+	}
+
+	// 7. 更新最后登录时间
+	UpdateLastLogin(db, user.UserID)
+
+	// 8. 返回结果
+	return &CompleteWeChatLoginResult{
+		UserID: user.UserID,
+		Token:  token,
+	}, nil
+}
