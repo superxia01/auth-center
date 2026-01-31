@@ -1565,6 +1565,9 @@ func CORSMiddleware(cfg *config.Config) gin.HandlerFunc {
 # .env
 # CORS 白名单（逗号分隔，只允许这些域名调用账号中心 API）
 ALLOWED_ORIGINS=https://os.crazyaigc.com,https://pr.crazyaigc.com,https://pixel.crazyaigc.com,https://3xvs5r4nm4.coze.site,https://study.crazyaigc.com,https://crm.crazyaigc.com
+
+# 回调域名白名单（逗号分隔，只允许这些域名接收登录回调）
+ALLOWED_CALLBACK_DOMAINS=pr.crazyaigc.com,www.crazyaigc.com,os.crazyaigc.com,pixel.crazyaigc.com,localhost
 ```
 
 **安全效果**:
