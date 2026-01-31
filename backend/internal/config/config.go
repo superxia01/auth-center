@@ -44,7 +44,7 @@ func Load() *Config {
 		WeChatMPSecret:   getEnv("WECHAT_MP_SECRET", ""),
 		AdminWeChatOpenID: getEnv("ADMIN_WECHAT_OPENID", ""),
 		AllowedOrigins:   getEnv("ALLOWED_ORIGINS", "https://os.crazyaigc.com,https://pr.crazyaigc.com"),
-		AllowedCallbackDomains: getEnv("ALLOWED_CALLBACK_DOMAINS", "os.crazyaigc.com,pr.crazyaigc.com,3xvs5r4nm4.coze.site"),
+		AllowedCallbackDomains: getEnv("ALLOWED_CALLBACK_DOMAINS", "os.crazyaigc.com,pr.crazyaigc.com,pixel.crazyaigc.com,3xvs5r4nm4.coze.site"),
 		Environment:      getEnv("NODE_ENV", "development"),
 	}
 }
