@@ -613,6 +613,157 @@ axios.interceptors.request.use((config) => {
 
 ## 数据库集成
 
+### 账号中心数据库表结构
+
+账号中心使用 PostgreSQL，包含以下表：
+
+#### 1. users（用户表）
+
+```sql
+CREATE TABLE users (
+  user_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  union_id VARCHAR(255) UNIQUE NOT NULL,
+  phone_number VARCHAR(255) UNIQUE,
+  password_hash VARCHAR(255),
+  email VARCHAR(255) UNIQUE,
+  last_login_at TIMESTAMP WITH TIME ZONE,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+-- 索引
+CREATE UNIQUE INDEX users_union_id_idx ON users(union_id);
+CREATE UNIQUE INDEX users_phone_number_idx ON users(phone_number);
+CREATE UNIQUE INDEX users_email_idx ON users(email);
+```
+
+**字段说明**：
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| user_id | UUID | 主键，用户唯一标识 |
+| union_id | VARCHAR(255) | 微信 UnionID，跨应用统一标识 |
+| phone_number | VARCHAR(255) | 手机号（用于密码登录） |
+| password_hash | VARCHAR(255) | 密码哈希（bcrypt） |
+| email | VARCHAR(255) | 邮箱 |
+| last_login_at | TIMESTAMP | 最后登录时间 |
+| created_at | TIMESTAMP | 创建时间 |
+| updated_at | TIMESTAMP | 更新时间 |
+
+---
+
+#### 2. user_accounts（用户账号表）
+
+```sql
+CREATE TABLE user_accounts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL,
+  provider VARCHAR(50) NOT NULL,
+  app_id VARCHAR(100) NOT NULL,
+  open_id VARCHAR(255) NOT NULL,
+  type VARCHAR(20) NOT NULL,
+  nickname VARCHAR(255),
+  avatar_url TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+
+  CONSTRAINT user_accounts_user_id_fkey
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON UPDATE CASCADE ON DELETE CASCADE
+);
+
+-- 唯一索引
+CREATE UNIQUE INDEX user_accounts_provider_app_open_idx
+  ON user_accounts(provider, app_id, open_id);
+
+-- 索引
+CREATE INDEX user_accounts_user_id_idx ON user_accounts(user_id);
+```
+
+**字段说明**：
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | UUID | 主键 |
+| user_id | UUID | 关联 users.user_id |
+| provider | VARCHAR(50) | 提供商（如 wechat） |
+| app_id | VARCHAR(100) | 微信 AppID |
+| open_id | VARCHAR(255) | 微信 OpenID |
+| type | VARCHAR(20) | 类型（web/mp/miniapp/app） |
+| nickname | VARCHAR(255) | 用户昵称 |
+| avatar_url | TEXT | 头像 URL |
+| created_at | TIMESTAMP | 创建时间 |
+
+---
+
+#### 3. sessions（会话表）
+
+```sql
+CREATE TABLE sessions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL,
+  token VARCHAR(500) UNIQUE NOT NULL,
+  device_info JSONB,
+  expires_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+  created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+
+  CONSTRAINT sessions_user_id_fkey
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON UPDATE CASCADE ON DELETE CASCADE
+);
+
+-- 索引
+CREATE INDEX sessions_user_id_idx ON sessions(user_id);
+CREATE UNIQUE INDEX sessions_token_idx ON sessions(token);
+```
+
+**字段说明**：
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | UUID | 主键 |
+| user_id | UUID | 关联 users.user_id |
+| token | VARCHAR(500) | JWT Token |
+| device_info | JSONB | 设备信息（IP, User-Agent 等） |
+| expires_at | TIMESTAMP | 过期时间（7天） |
+| created_at | TIMESTAMP | 创建时间 |
+
+---
+
+### 业务系统数据库表设计
+
+业务系统的数据库需要添加以下字段来关联账号中心：
+
+#### 必需字段
+
+```sql
+-- 业务系统用户表示例（如 PR 业务系统）
+CREATE TABLE users (
+  id VARCHAR(255) PRIMARY KEY,  -- 本地主键（CUID/UUID）
+  auth_center_user_id UUID UNIQUE NOT NULL,  -- ✅ 关联账号中心
+  role VARCHAR(50) DEFAULT 'USER',
+  profile JSONB,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+
+  CONSTRAINT users_auth_center_user_id_fkey
+    FOREIGN KEY (auth_center_user_id)
+    REFERENCES auth_center_db.users(user_id) ON UPDATE CASCADE
+);
+
+-- 关键索引
+CREATE UNIQUE INDEX users_auth_center_user_id_idx
+  ON users(auth_center_user_id);
+```
+
+**字段说明**：
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| id | VARCHAR(255) | ✅ | 本地主键 |
+| auth_center_user_id | UUID | ✅ | **关联账号中心的 user_id** |
+| role | VARCHAR(50) | - | 业务角色 |
+| profile | JSONB | - | 用户配置信息 |
+| created_at | TIMESTAMP | ✅ | 创建时间 |
+| updated_at | TIMESTAMP | ✅ | 更新时间 |
+
+---
+
+### 数据库集成
+
 ### 环境变量配置
 
 ```bash
