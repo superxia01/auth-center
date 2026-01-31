@@ -140,6 +140,34 @@ func WeChatLogin(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// 重新查询用户信息，包含 Accounts
+		if err := db.Preload("Accounts").Where("user_id = ?", user.UserID).First(&user).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, LoginResponse{
+				Success: false,
+				Error:   "查询用户信息失败",
+			})
+			return
+		}
+
+		// 构建账号列表
+		accounts := make([]map[string]interface{}, 0, len(user.Accounts))
+		for _, account := range user.Accounts {
+			accounts = append(accounts, map[string]interface{}{
+				"provider":   account.Provider,
+				"type":       account.Type,
+				"nickname":   account.Nickname,
+				"avatarUrl":  account.AvatarURL,
+				"createdAt":  account.CreatedAt,
+			})
+		}
+
+		// 从微信账号获取昵称和头像
+		var nickname, avatarUrl string
+		if len(user.Accounts) > 0 {
+			nickname = user.Accounts[0].Nickname
+			avatarUrl = user.Accounts[0].AvatarURL
+		}
+
 		// 生成 JWT Token
 		token, err := service.GenerateToken(user.UserID, cfg.JWTSecret)
 		if err != nil {
@@ -163,10 +191,26 @@ func WeChatLogin(db *gorm.DB) gin.HandlerFunc {
 		// 更新最后登录时间
 		service.UpdateLastLogin(db, user.UserID)
 
-		c.JSON(http.StatusOK, LoginResponse{
-			Success: true,
-			Token:   token,
-			UserID:  user.UserID,
+		// 构建完整的用户数据
+		userData := map[string]interface{}{
+			"userId":      user.UserID,
+			"unionId":     user.UnionID,
+			"phoneNumber": user.PhoneNumber,
+			"email":       user.Email,
+			"createdAt":   user.CreatedAt,
+			"lastLoginAt": user.LastLoginAt,
+			"profile": map[string]interface{}{
+				"nickname":  nickname,
+				"avatarUrl": avatarUrl,
+			},
+			"accounts": accounts,
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"token":    token,
+			"userId":   user.UserID,
+			"data":     userData,
 		})
 	}
 }

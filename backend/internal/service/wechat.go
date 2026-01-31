@@ -74,12 +74,7 @@ func GetWeChatAccessToken(cfg *config.Config, code string, isMP bool) (*WeChatOA
 
 // GetWeChatUserInfo 获取微信用户信息
 func GetWeChatUserInfo(accessToken, openID string, isMP bool) (map[string]interface{}, error) {
-	// 开放平台扫码登录：access_token 响应中已包含用户信息，无需额外调用
-	if !isMP {
-		return nil, nil
-	}
-
-	// 公众号授权：需要调用 userinfo 接口获取详细信息（包含 unionid）
+	// 公众号和开放平台都需要调用 userinfo 接口获取用户信息（昵称、头像等）
 	apiURL := "https://api.weixin.qq.com/sns/userinfo"
 	params := url.Values{}
 	params.Set("access_token", accessToken)
@@ -135,6 +130,7 @@ func FindOrCreateUserByUnionID(db *gorm.DB, unionID string, openID, appID, accou
 	).First(&account).Error
 
 	if err == gorm.ErrRecordNotFound {
+		// 账户不存在，创建新账户
 		account = models.UserAccount{
 			UserID:    user.UserID,
 			Provider:  "wechat",
@@ -147,6 +143,20 @@ func FindOrCreateUserByUnionID(db *gorm.DB, unionID string, openID, appID, accou
 
 		if err := db.Create(&account).Error; err != nil {
 			return nil, fmt.Errorf("创建用户账户失败: %w", err)
+		}
+	} else if err == nil {
+		// 账户已存在，更新昵称和头像
+		updates := map[string]interface{}{}
+		if nickname := GetStringValue(userInfo, "nickname"); nickname != "" {
+			updates["nickname"] = nickname
+		}
+		if avatarURL := GetStringValue(userInfo, "headimgurl"); avatarURL != "" {
+			updates["avatar_url"] = avatarURL
+		}
+		if len(updates) > 0 {
+			if err := db.Model(&account).Updates(updates).Error; err != nil {
+				return nil, fmt.Errorf("更新用户账户失败: %w", err)
+			}
 		}
 	}
 
@@ -240,7 +250,10 @@ func CompleteWeChatLogin(db *gorm.DB, cfg *config.Config, code string, isMP bool
 	}
 
 	// 7. 更新最后登录时间
-	UpdateLastLogin(db, user.UserID)
+	if err := UpdateLastLogin(db, user.UserID); err != nil {
+		// 记录错误但不中断登录流程
+		fmt.Printf("警告: 更新最后登录时间失败: %v\n", err)
+	}
 
 	// 8. 返回结果
 	return &CompleteWeChatLoginResult{

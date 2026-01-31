@@ -104,6 +104,7 @@ func GetUsers(db *gorm.DB, page, pageSize int) ([]map[string]interface{}, int64,
 			"email":        user.Email,
 			"createdAt":    user.CreatedAt,
 			"updatedAt":    user.UpdatedAt,
+			"lastLoginAt":  user.LastLoginAt,
 			"accounts":     accounts,
 			"loginMethods": loginMethods,
 		}
