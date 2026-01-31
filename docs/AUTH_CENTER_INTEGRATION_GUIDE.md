@@ -1,10 +1,10 @@
 # 账号中心对接指南
 
-**面向开发者**: 业务系统集成账号中心微信登录
+**面向开发者**: 业务系统集成账号中心微信登录和密码登录
 **账号中心地址**: https://os.crazyaigc.com
 **数据库服务器**: 杭州服务器 47.110.82.96:5432
 **架构版本**: V3.0 - 前后端分离 + Go 后端 + 三层账号模型
-**最后更新**: 2026-01-30
+**最后更新**: 2026-01-31
 
 ---
 
@@ -15,6 +15,11 @@
 3. [三层账号模型详解](#三层账号模型详解)
 4. [微信登录流程](#微信登录流程)
 5. [API接口说明](#api接口说明)
+   - [发起微信登录](#1-发起微信登录智能检测)
+   - [验证Token](#2-验证token)
+   - [获取用户信息](#3-获取用户信息)
+   - [密码登录](#4-密码登录)
+   - [登出](#5-登出)
 6. [已集成系统](#已集成系统)
 7. [数据库集成](#数据库集成)
 8. [代码示例](#代码示例)
@@ -366,6 +371,102 @@ Content-Type: application/json
       }
     ]
   }
+}
+```
+
+---
+
+### 4. 密码登录
+
+**接口**: `POST /api/auth/password/login`
+
+**请求头**:
+```
+Content-Type: application/json
+```
+
+**请求体**:
+```json
+{
+  "phoneNumber": "13800138000",
+  "password": "password123"
+}
+```
+
+**参数说明**:
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| phoneNumber | string | 是 | 手机号（管理员预先设置） |
+| password | string | 是 | 密码（管理员预先设置） |
+
+**成功响应**:
+```json
+{
+  "success": true,
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "userId": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+**失败响应**:
+```json
+{
+  "success": false,
+  "error": "手机号或密码错误"
+}
+```
+
+**业务系统集成示例**:
+```typescript
+// 前端登录页面
+async function handlePasswordLogin() {
+  const phoneNumber = "13800138000"
+  const password = "password123"
+
+  const response = await fetch('https://os.crazyaigc.com/api/auth/password/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phoneNumber, password })
+  })
+
+  const result = await response.json()
+
+  if (result.success) {
+    // 登录成功
+    localStorage.setItem('auth_token', result.token)
+    localStorage.setItem('user_id', result.userId)
+
+    // 跳转到业务系统首页
+    window.location.href = '/dashboard'
+  } else {
+    // 登录失败
+    alert(result.error)
+  }
+}
+```
+
+**重要说明**:
+- ⚠️ 用户必须先通过微信登录创建账号
+- ⚠️ 管理员在账号中心后台为用户设置手机号和密码
+- ✅ 设置完成后，用户可使用手机号+密码登录
+- ✅ 业务系统可直接调用此接口验证用户身份
+
+---
+
+### 5. 登出
+
+**接口**: `POST /api/auth/signout`
+
+**请求头**:
+```
+Content-Type: application/json
+Authorization: Bearer <token>
+```
+
+**响应**:
+```json
+{
+  "success": true
 }
 ```
 
@@ -740,7 +841,7 @@ if (tokenExpired) {
 
 ---
 
-**文档版本**: V3.0.0
-**最后更新**: 2026-01-30
+**文档版本**: V3.0.1
+**最后更新**: 2026-01-31
 **架构版本**: 前后端分离 + Go 后端 + 三层账号模型 (V3.0)
 **维护团队**: KeeNChase 账号中心团队
