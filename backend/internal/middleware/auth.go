@@ -69,7 +69,7 @@ func Auth(db *gorm.DB) gin.HandlerFunc {
 }
 
 // RequireAdmin 要求管理员权限
-// 通过验证用户的微信 OpenID 是否匹配配置中的管理员 OpenID
+// 通过验证用户的微信 UnionID 是否匹配配置中的管理员 UnionID
 func RequireAdmin(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID := c.GetString("userId")
@@ -82,11 +82,11 @@ func RequireAdmin(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// 加载配置获取管理员 OpenID
+		// 加载配置获取管理员 UnionID
 		cfg := config.Load()
-		adminOpenID := cfg.AdminWeChatOpenID
+		adminUnionID := cfg.AdminWeChatOpenID
 
-		if adminOpenID == "" {
+		if adminUnionID == "" {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"success": false,
 				"error":   "管理员配置缺失",
@@ -95,36 +95,40 @@ func RequireAdmin(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// 查询用户的微信账号 OpenID
-		var account struct {
-			OpenID string `gorm:"column:open_id"`
+		// 查询用户的 UnionID
+		var user struct {
+			UnionID string `gorm:"column:union_id"`
 		}
-		err := db.Table("user_accounts").
-			Select("open_id").
-			Where("user_id = ? AND provider = 'wechat'", userID).
-			First(&account).Error
+		err := db.Table("users").
+			Select("union_id").
+			Where("user_id = ?", userID).
+			First(&user).Error
 
 		if err != nil {
 			c.JSON(http.StatusForbidden, gin.H{
 				"success": false,
 				"error":   "无管理员权限",
+				"debug": gin.H{
+					"userID":    userID,
+					"error":     err.Error(),
+				},
 			})
 			c.Abort()
 			return
 		}
 
-		// 添加日志
-		c.Header("X-User-OpenID", account.OpenID)
-		c.Header("X-Admin-OpenID", adminOpenID)
+		// 添加调试日志
+		c.Header("X-User-UnionID", user.UnionID)
+		c.Header("X-Admin-UnionID", adminUnionID)
 
-		// 验证 OpenID 是否匹配管理员
-		if account.OpenID != adminOpenID {
+		// 验证 UnionID 是否匹配管理员
+		if user.UnionID != adminUnionID {
 			c.JSON(http.StatusForbidden, gin.H{
 				"success": false,
 				"error":   "无管理员权限",
 				"debug": gin.H{
-					"userOpenID":  account.OpenID,
-					"adminOpenID": adminOpenID,
+					"userUnionID": user.UnionID,
+					"adminUnionID": adminUnionID,
 				},
 			})
 			c.Abort()
