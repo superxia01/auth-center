@@ -831,6 +831,37 @@ WHERE u.id = 'xxx';
 
 ### 部署流程（标准）
 
+#### ⚠️ 核心原则：本地构建，上传产物
+
+**强制要求**：
+- ✅ **前端和后端都必须在本地构建**
+- ✅ **只上传构建产物到服务器**
+- ❌ **禁止在服务器上运行构建命令**
+
+**为什么必须本地构建？**
+
+1. **不占用服务器资源**
+   - 编译非常消耗 CPU 和内存
+   - 服务器资源宝贵，应该用于运行服务
+   - 本地 Mac 性能通常比服务器强
+
+2. **构建产物可重现**
+   - 本地环境可控（依赖版本、编译器版本）
+   - 避免服务器环境差异导致的问题
+   - Go 交叉编译已验证完全可靠
+
+3. **安全性更好**
+   - 服务器不需要安装开发工具（Node.js、Go 编译器等）
+   - 减少攻击面
+   - 服务器只保留必要的运行时文件
+
+4. **部署更快**
+   - 本地构建完成后，只需要上传文件
+   - 避免服务器编译耗时长
+   - 减少服务中断时间
+
+---
+
 #### 1. 前端部署（Vite + React - 推荐）
 
 ```bash
@@ -890,6 +921,8 @@ server {
 
 #### 2. 前端部署（Next.js - 仅用于 SSR 场景）
 
+**注意**：Next.js SSR 也必须在**本地构建**，不要在服务器上运行 `npm install` 和 `npm run build`。
+
 ```bash
 # === 本地开发 ===
 cd frontend/
@@ -909,27 +942,34 @@ npm run dev
 # 4. 类型检查
 npx tsc --noEmit
 
-# === 部署到服务器 ===
+# === 本地构建（重要） ===
 
-# 5. 上传代码（排除 node_modules 和 .next）
-rsync -avz \
-  --exclude 'node_modules' \
-  --exclude '.next' \
-  --exclude '.env.local' \
-  . shanghai-tencent:/var/www/example-frontend/
-
-# 6. 服务器构建
-ssh shanghai-tencent
-cd /var/www/example-frontend
-npm install
+# 5. 本地构建产物
 npm run build
 
-# 7. PM2 管理
-pm2 start npm --name "example-frontend" -- start
-pm2 save
+# === 部署到服务器 ===
+
+# 6. 上传构建产物（不是源码）
+rsync -avz \
+  --exclude 'node_modules' \
+  --exclude '.next/cache' \
+  .next/ package.json package-lock.json \
+  shanghai-tencent:/var/www/example-frontend/
+
+# 7. 服务器上安装生产依赖并启动
+ssh shanghai-tencent
+cd /var/www/example-frontend
+npm install --production  # 只安装生产依赖
+pm2 restart example-frontend
 ```
 
 #### 3. 后端部署（Go）
+
+**重要**：
+- ✅ **本地交叉编译**（Mac → Linux）
+- ✅ **禁用 cgo**（`CGO_ENABLED=0`）
+- ✅ **生成静态链接二进制**
+- ✅ **上传二进制文件到服务器**
 
 ```bash
 # === 本地开发 ===
@@ -943,14 +983,25 @@ go run cmd/server/main.go
 
 # === 交叉编译（本地 Mac → Linux 服务器） ===
 
-# 3. 编译 Linux 二进制
-GOOS=linux GOARCH=amd64 go build \
+# 3. 编译 Linux 二进制（静态链接）
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
   -o bin/server \
   cmd/server/main.go
 
-# 4. 上传二进制
+# 4. 验证二进制文件
+file bin/server
+# 输出：bin/server: ELF 64-bit LSB executable, x86-64, ...
+
+# 5. 上传二进制和配置
 scp bin/server shanghai-tencent:/var/www/example-backend/
-scp -r config shanghai-tencent:/var/www/example-backend/
+scp configs/config.yaml shanghai-tencent:/var/www/example-backend/
+
+# 6. 重启服务（在服务器上）
+ssh shanghai-tencent "sudo systemctl restart example-backend"
+
+# 7. 检查服务状态
+ssh shanghai-tencent "sudo systemctl status example-backend"
+```
 
 # === 服务器配置 ===
 
@@ -1043,6 +1094,70 @@ server {
     }
 }
 ```
+
+---
+
+### 本地构建 vs 服务器构建对比
+
+#### 为什么禁止在服务器上构建？
+
+| 对比项 | 本地构建 ✅ | 服务器构建 ❌ |
+|--------|------------|-------------|
+| **CPU 占用** | 本地 Mac（高性能） | 服务器 CPU（影响线上服务） |
+| **磁盘占用** | 只上传构建产物 | 需要安装开发工具 + node_modules |
+| **网络带宽** | 只上传必要文件 | 需要下载依赖包 |
+| **构建时间** | 快（本地性能好） | 慢（服务器通常不如本地） |
+| **环境一致性** | 可控（本地环境） | 不可控（服务器环境变化） |
+| **安全性** | 服务器无需开发工具 | 需要安装 Node.js/Go 编译器 |
+
+#### 具体数据对比
+
+**Vite 前端构建**：
+```bash
+# 本地构建
+- 磁盘占用：node_modules ~300MB（本地）
+- 构建时间：~10秒（Mac M1/M2）
+- 上传大小：dist/ ~2MB
+- 服务器占用：~2MB（只保留构建产物）
+
+# 服务器构建（错误方式）
+- 磁盘占用：node_modules ~300MB（服务器）
+- 构建时间：~30-60秒（服务器 CPU 较弱）
+- 上传大小：源码 + node_modules
+- 服务器占用：~600MB+
+```
+
+**Go 后端构建**：
+```bash
+# 本地交叉编译
+- 编译命令：CGO_ENABLED=0 GOOS=linux go build
+- 编译时间：~5秒
+- 上传大小：bin/server ~15-20MB（单个二进制）
+- 服务器占用：~20MB（只保留二进制）
+
+# 服务器编译（错误方式）
+- 需要：安装 Go 编译器
+- 编译时间：~10-20秒
+- 服务器占用：需要 Go 工具链 + 源码
+```
+
+#### 总结
+
+**本地构建优势**：
+- ✅ 快速（本地性能好）
+- ✅ 节省服务器资源（磁盘、CPU、带宽）
+- ✅ 安全（服务器无开发工具）
+- ✅ 可控（本地环境一致）
+
+**禁止服务器构建原因**：
+- ❌ 占用服务器资源（影响其他服务）
+- ❌ 浪费磁盘空间（node_modules 很大）
+- ❌ 增加攻击面（开发工具可能有漏洞）
+- ❌ 构建慢（影响部署速度）
+
+**所有 KeeNChase V3.0 系统必须遵守此规则。**
+
+---
 
 ### 环境变量管理（强制）
 
