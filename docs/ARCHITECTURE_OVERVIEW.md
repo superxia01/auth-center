@@ -711,6 +711,57 @@ IP: 47.110.82.96
 用途: 统一数据存储中心
 ```
 
+**⚠️ 重要：数据库连接配置规范**
+
+**强制规则**：
+- ✅ **必须使用 `sslmode=disable`**（PostgreSQL容器不支持SSL）
+- ✅ **必须使用专用的数据库用户**（禁止使用nexus超级用户）
+- ✅ **必须直接连接到 `47.110.82.96:5432`**（禁止使用SSH隧道）
+- ✅ **连接字符串格式**：`postgresql://用户名:密码@47.110.82.96:5432/数据库名?sslmode=disable`
+
+**错误示例（不要这样配置）**：
+```bash
+# ❌ 错误1：使用错误的SSL模式
+DATABASE_URL=postgresql://user:pass@47.110.82.96:5432/db?sslmode=require
+DATABASE_URL=postgresql://user:pass@47.110.82.96:5432/db?sslmode=prefer
+# 结果：FATAL: server does not support SSL, but SSL was required
+
+# ❌ 错误2：使用nexus超级用户
+DATABASE_URL=postgresql://nexus:pass@47.110.82.96:5432/db?sslmode=disable
+# 结果：违反安全规范，权限过大
+
+# ❌ 错误3：使用SSH隧道
+DATABASE_URL=postgresql://user:pass@localhost:5433/db?sslmode=disable
+# 结果：部署复杂，端口冲突
+```
+
+**正确配置**：
+```bash
+# ✅ 正确：使用专用用户 + disable SSL
+DATABASE_URL=postgresql://pr_business_user:PrBusiness2026!@47.110.82.96:5432/pr_business_db?sslmode=disable
+DATABASE_URL=postgresql://pixel_user:PixelBusiness2026!@47.110.82.96:5432/pixel_business_db?sslmode=disable
+DATABASE_URL=postgresql://auth_center_user:AuthCenter2026!@47.110.82.96:5432/auth_center_db?sslmode=disable
+```
+
+**标准连接信息**：
+```
+数据库服务器: 47.110.82.96:5432
+SSL支持:      不支持（必须使用 sslmode=disable）
+
+各系统数据库用户：
+├─ auth_center_user  (auth_center_db)     - 密码: AuthCenter2026!
+├─ pr_business_user   (pr_business_db)     - 密码: PrBusiness2026!
+├─ pixel_user        (pixel_business_db)   - 密码: PixelBusiness2026!
+├─ pr_user           (pr_business_db)       - 密码: PrBusiness2026!
+├─ study_user        (study_business_db)    - 密码: StudyBusiness2026!
+└─ crm_user          (crm_business_db)      - 密码: CrmBusiness2026!
+```
+
+**常见错误排查**：
+- ❌ `password authentication failed for user "xxx"` → 检查用户名和密码是否正确
+- ❌ `server does not support SSL, but SSL was required` → 检查是否使用 `sslmode=disable`
+- ❌ `connection refused` → 检查主机和端口是否正确（47.110.82.96:5432）
+
 ### 数据库隔离策略
 
 ```
