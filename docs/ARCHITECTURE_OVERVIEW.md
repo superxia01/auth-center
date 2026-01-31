@@ -17,8 +17,8 @@
 | 系统 | 域名 | 状态 | 架构 |
 |------|------|------|------|
 | 账号中心 | os.crazyaigc.com | ✅ 已部署 | **V3.0: Go + Next.js** |
-| PR业务系统 | pr.crazyaigc.com | ✅ 已部署 | **V3.0: Go + Next.js** ✅ 100% |
-| AI生图系统 | pixel.crazyaigc.com / 3xvs5r4nm4.coze.site | ✅ 已部署 | Coze 平台 |
+| PR业务系统 | pr.crazyaigc.com | ✅ 已部署 | **V3.0: Go + Vite + React** ✅ 100% |
+| AI生图系统 | pixel.crazyaigc.com | ✅ 已部署 | **V3.0: Go + Vite + React** ✅ 100% |
 | 知识库系统 | study.crazyaigc.com | ✅ 已部署 | V1.0: Next.js |
 | 客户管理系统 | crm.crazyaigc.com | ✅ 已部署 | V1.0: Next.js |
 
@@ -27,10 +27,10 @@
 ```
 V1.0 → V2.0 → V3.0 (当前标准)
 单体    Monorepo  前后端分离
-Next.js Next.js  Go + Next.js
+Next.js Next.js  Go + Vite/React
 ```
 
-**所有新系统必须采用 V3.0 架构**，现有系统逐步迁移。
+**所有新系统必须采用 V3.0 架构**（Go + Vite/React），现有系统逐步迁移。
 
 ---
 
@@ -178,7 +178,7 @@ Next.js Next.js  Go + Next.js
 │   └── [保留作为拆分其他系统的参考]
 │
 ├── 📦 auth-center = 账号中心 (os.crazyaigc.com) - 独立仓库
-│   ├── frontend/                  ← Next.js 前端
+│   ├── frontend/                  ← Next.js 前端 (管理员后台)
 │   │   ├── src/
 │   │   ├── package.json
 │   │   └── next.config.js
@@ -198,27 +198,55 @@ Next.js Next.js  Go + Next.js
 │   ├── .git/
 │   └── README.md
 │
-└── 📦 pr-business = PR业务系统 (pr.crazyaigc.com) - 独立仓库
-    ├── frontend/                  ← Next.js 前端 (UI Only)
+├── 📦 pr-business = PR业务系统 (pr.crazyaigc.com) - 独立仓库
+│   ├── frontend/                  ← Vite + React 前端 (SPA)
+│   │   ├── src/
+│   │   │   ├── pages/            # 页面组件
+│   │   │   ├── components/
+│   │   │   └── lib/
+│   │   ├── index.html
+│   │   ├── vite.config.ts
+│   │   └── package.json
+│   │
+│   ├── backend/                   ← Go 后端 (All APIs)
+│   │   ├── cmd/server/main.go
+│   │   ├── internal/
+│   │   │   ├── handler/           # HTTP 处理器
+│   │   │   │   ├── auth.go        # 认证相关
+│   │   │   │   ├── tasks.go       # 任务管理
+│   │   │   │   ├── audit.go       # 审核队列
+│   │   │   │   ├── invitations.go # 邀请系统
+│   │   │   │   ├── assignments.go # 任务分配
+│   │   │   │   └── wallet.go      # 钱包积分
+│   │   │   ├── service/           # 业务逻辑
+│   │   │   ├── repository/        # 数据访问
+│   │   │   ├── middleware/        # 中间件
+│   │   │   ├── models/            # 数据模型
+│   │   │   └── config/            # 配置管理
+│   │   ├── go.mod
+│   │   ├── bin/server             # 编译后的二进制
+│   │   └── Dockerfile
+│   │
+│   ├── prisma/
+│   │   └── schema.prisma
+│   │
+│   ├── deploy-pr-business-v3.sh  ← V3.0 部署脚本
+│   └── README.md
+│
+└── 📦 superpixel = AI生图系统 (pixel.crazyaigc.com) - 独立仓库
+    ├── frontend/                  ← Vite + React 前端 (SPA)
     │   ├── src/
-    │   │   ├── app/
-    │   │   │   ├── (dashboard)/    # 商家/服务商/达人后台
-    │   │   │   └── mobile/         # 达人移动端
+    │   │   ├── pages/
     │   │   ├── components/
     │   │   └── lib/
-    │   ├── package.json
-    │   └── next.config.js
+    │   ├── index.html
+    │   ├── vite.config.ts
+    │   └── package.json
     │
     ├── backend/                   ← Go 后端 (All APIs)
     │   ├── cmd/server/main.go
     │   ├── internal/
     │   │   ├── handler/           # HTTP 处理器
-    │   │   │   ├── auth.go        # 认证相关
-    │   │   │   ├── tasks.go       # 任务管理
-    │   │   │   ├── audit.go       # 审核队列
-    │   │   │   ├── invitations.go # 邀请系统
-    │   │   │   ├── assignments.go # 任务分配
-    │   │   │   └── wallet.go      # 钱包积分
     │   │   ├── service/           # 业务逻辑
     │   │   ├── repository/        # 数据访问
     │   │   ├── middleware/        # 中间件
@@ -228,13 +256,9 @@ Next.js Next.js  Go + Next.js
     │   ├── bin/server             # 编译后的二进制
     │   └── Dockerfile
     │
-    ├── backend-pr/                ← Go 后端生产版本
-    │   └── [与 backend 相同结构]
-    │
     ├── prisma/
     │   └── schema.prisma
     │
-    ├── deploy-pr-business-v3.sh  ← V3.0 部署脚本
     └── README.md
 ```
 
@@ -263,38 +287,35 @@ Next.js Next.js  Go + Next.js
 ├─ ✅ os.crazyaigc.com (账号中心) - V3.0 架构
 │   ├─ 前端: Next.js :3000 (PM2 管理)
 │   ├─ 后端: Go API :8080 (Systemd 管理)
-│   ├─ 框架: Next.js 15.5 + Go 1.21
+│   ├─ 框架: Next.js 15 + Go 1.25
 │   ├─ SSL证书: 有效期至 2026-04-27
 │   └─ 状态: ✅ 在线运行
 │
 ├─ ✅ pr.crazyaigc.com (PR业务) - V3.0 架构
-│   ├─ 前端: Next.js :3001 (PM2 管理)
+│   ├─ 前端: Vite + React 静态文件 (Nginx 直接服务)
 │   ├─ 后端: Go API :8081 (Systemd 管理)
-│   ├─ 框架: Next.js 15 + Go 1.21
+│   ├─ 框架: Vite 6 + React 19 + Go 1.25
 │   ├─ SSL证书: 有效期至 2026-04-27
 │   └─ 状态: ✅ 在线运行
 │
-└─ ✅ pixel.crazyaigc.com (AI生图) - Coze 平台
-│   ├─ 主域名: https://pixel.crazyaigc.com
-│   ├─ 备用域名: https://3xvs5r4nm4.coze.site (Coze 部署)
-│   ├─ 框架: Coze 平台
+├─ ✅ pixel.crazyaigc.com (AI生图) - V3.0 架构
+│   ├─ 前端: Vite + React 静态文件 (Nginx 直接服务)
+│   ├─ 后端: Go API :8082 (Systemd 管理)
+│   ├─ 框架: Vite 6 + React 19 + Go 1.25
+│   ├─ SSL证书: 有效期至 2026-04-27
 │   └─ 状态: ✅ 在线运行
-
-📍 Vercel (Serverless 平台)
-├─ ✅ study.crazyaigc.com (知识库系统)
-│   ├─ 框架: Next.js
-│   ├─ 部署: Vercel 自动化 CI/CD
-│   └─ 状态: ✅ 已部署
 │
-└─ ✅ crm.crazyaigc.com (客户管理系统)
+├─ ✅ study.crazyaigc.com (知识库系统) - V1.0 架构
+│   ├─ 前端: Next.js :3003 (PM2 管理)
+│   ├─ 框架: Next.js
+│   ├─ SSL证书: 有效期至 2026-04-27
+│   └─ 状态: ✅ 在线运行
+│
+└─ ✅ crm.crazyaigc.com (客户管理系统) - V1.0 架构
+    ├─ 前端: Next.js :3004 (PM2 管理)
     ├─ 框架: Next.js
-    ├─ 部署: Vercel 自动化 CI/CD
-    └─ 状态: ✅ 已部署
-
-📍 Coze 平台
-└─ ✅ pixel.crazyaigc.com (AI生图系统)
-    ├─ 框架: Coze 平台
-    └─ 状态: ✅ 已部署
+    ├─ SSL证书: 有效期至 2026-04-27
+    └─ 状态: ✅ 在线运行
 ```
 
 ---
@@ -338,6 +359,21 @@ Next.js Next.js  Go + Next.js
 ### 技术栈标准（强制）
 
 #### 前端技术栈
+
+**Vite + React (推荐，V3.0 标准)**
+```
+✅ 构建工具: Vite 6+
+✅ 框架: React 19+
+✅ 语言: TypeScript 5+
+✅ 路由: React Router 6+
+✅ 样式: Tailwind CSS
+✅ 状态管理: Zustand / React Context
+✅ HTTP 客户端: Axios / Fetch API
+✅ 组件库: Radix UI / shadcn/ui
+✅ 表单处理: React Hook Form
+```
+
+**Next.js (仅用于需要 SSR 的系统)**
 ```
 ✅ 框架: Next.js 15+ (App Router)
 ✅ 语言: TypeScript 5+
@@ -346,6 +382,10 @@ Next.js Next.js  Go + Next.js
 ✅ HTTP 客户端: Axios / Fetch API
 ✅ 表单处理: React Hook Form
 ```
+
+**架构选择原则**:
+- **Vite + React**: 适用于大多数业务系统（PR、Pixel 等），性能更好，部署更简单
+- **Next.js**: 仅用于需要 SEO 或 SSR 的特殊场景（如账号中心管理后台）
 
 #### 后端技术栈
 ```
@@ -739,9 +779,33 @@ WHERE u.id = 'xxx';
 
 ### V3.0 标准部署架构
 
+**架构 A: Vite + React (推荐 - 性能更好，部署更简单)**
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    单系统部署架构                           │
+│              Vite + React 系统部署架构                      │
+└─────────────────────────────────────────────────────────────┘
+
+业务系统 (example.com)
+│
+├── Nginx (443/80)
+│   ├── SSL 终止
+│   ├── 静态资源服务 (Vite 构建产物)
+│   │   ├── /          → /var/www/example-frontend/index.html
+│   │   └── /assets/   → 静态资源 (1年缓存)
+│   └── 反向代理
+│       └── /api       → Backend (Go :8080)
+│
+└── Backend (Go)
+    ├── 端口: 8080
+    ├── 运行: Systemd
+    ├── 功能: RESTful API
+    └── 连接: PostgreSQL (47.110.82.96:5432)
+```
+
+**架构 B: Next.js (仅用于 SSR 场景)**
+```
+┌─────────────────────────────────────────────────────────────┐
+│               Next.js 系统部署架构                          │
 └─────────────────────────────────────────────────────────────┘
 
 业务系统 (example.com)
@@ -760,14 +824,71 @@ WHERE u.id = 'xxx';
 │
 └── Backend (Go)
     ├── 端口: 8080
-    ├── 运行: Systemd / PM2
+    ├── 运行: Systemd
     ├── 功能: RESTful API
     └── 连接: PostgreSQL (47.110.82.96:5432)
 ```
 
 ### 部署流程（标准）
 
-#### 1. 前端部署（Next.js）
+#### 1. 前端部署（Vite + React - 推荐）
+
+```bash
+# === 本地开发 ===
+cd frontend/
+
+# 1. 安装依赖
+npm install
+
+# 2. 环境配置
+cat > .env.production << EOF
+VITE_API_URL=https://api.example.com
+VITE_APP_URL=https://example.com
+EOF
+
+# 3. 开发（可选）
+npm run dev
+
+# 4. 类型检查 + 构建
+npm run build:check
+
+# === 部署到服务器 ===
+
+# 5. 上传构建产物（静态文件）
+rsync -avz dist/ shanghai-tencent:/var/www/example-frontend/
+
+# 6. Nginx 配置（直接服务静态文件）
+# sudo nginx -t && sudo systemctl reload nginx
+```
+
+**Nginx 配置（Vite 静态文件）**:
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name example.com;
+
+    # 前端静态文件（Vite 构建）
+    location / {
+        root /var/www/example-frontend;
+        try_files $uri $uri/ /index.html;
+
+        # 静态资源缓存
+        location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+            expires 1y;
+            add_header Cache-Control "public, immutable";
+        }
+    }
+
+    # 后端 API
+    location /api {
+        rewrite ^/api/?(.*) /$1 break;
+        proxy_pass http://localhost:8080;
+        # ... 其他代理配置
+    }
+}
+```
+
+#### 2. 前端部署（Next.js - 仅用于 SSR 场景）
 
 ```bash
 # === 本地开发 ===
@@ -795,10 +916,10 @@ rsync -avz \
   --exclude 'node_modules' \
   --exclude '.next' \
   --exclude '.env.local' \
-  . ubuntu@101.35.120.199:/var/www/example-frontend/
+  . shanghai-tencent:/var/www/example-frontend/
 
 # 6. 服务器构建
-ssh ubuntu@101.35.120.199
+ssh shanghai-tencent
 cd /var/www/example-frontend
 npm install
 npm run build
@@ -808,7 +929,7 @@ pm2 start npm --name "example-frontend" -- start
 pm2 save
 ```
 
-#### 2. 后端部署（Go）
+#### 3. 后端部署（Go）
 
 ```bash
 # === 本地开发 ===
@@ -828,8 +949,8 @@ GOOS=linux GOARCH=amd64 go build \
   cmd/server/main.go
 
 # 4. 上传二进制
-scp bin/server ubuntu@101.35.120.199:/var/www/example-backend/
-scp -r config ubuntu@101.35.120.199:/var/www/example-backend/
+scp bin/server shanghai-tencent:/var/www/example-backend/
+scp -r config shanghai-tencent:/var/www/example-backend/
 
 # === 服务器配置 ===
 
@@ -860,7 +981,7 @@ sudo systemctl start example-backend
 sudo systemctl status example-backend
 ```
 
-#### 3. Nginx 配置（标准模板）
+#### 4. Nginx 配置标准模板
 
 ```nginx
 # /etc/nginx/sites-available/example.com
@@ -925,7 +1046,15 @@ server {
 
 ### 环境变量管理（强制）
 
-#### 前端环境变量（.env.local）
+#### Vite 前端环境变量（.env.production）
+```bash
+# ✅ 必须以 VITE_ 开头（暴露给浏览器）
+VITE_API_URL=https://api.example.com
+VITE_APP_URL=https://example.com
+VITE_WECHAT_APP_ID=wxe3453a6c5c8ec701
+```
+
+#### Next.js 前端环境变量（.env.local）
 ```bash
 # ✅ 必须以 NEXT_PUBLIC_ 开头（暴露给浏览器）
 NEXT_PUBLIC_API_URL=https://api.example.com
@@ -1305,14 +1434,16 @@ docs(api): 更新认证文档
 ### 服务器信息
 
 **杭州数据库服务器**:
+- 别名: hangzhou-ali
 - IP: 47.110.82.96
-- SSH: `ssh -i ~/.ssh/xia_mac_alicloud root@47.110.82.96`
+- SSH: `ssh hangzhou-ali`
 - 数据库: PostgreSQL 15 :5432
 
 **上海应用服务器**:
+- 别名: shanghai-tencent
 - IP: 101.35.120.199
 - 用户名: ubuntu
-- SSH: ~/.ssh/xia_mac_lighthouse.pem
+- SSH: `ssh shanghai-tencent`
 - 部署应用: os.crazyaigc.com, pr.crazyaigc.com
 
 ### 常用命令
@@ -1320,7 +1451,7 @@ docs(api): 更新认证文档
 ```bash
 # === 杭州数据库 ===
 # SSH 连接
-ssh -i ~/.ssh/xia_mac_alicloud root@47.110.82.96
+ssh hangzhou-ali
 
 # 查看数据库容器
 docker ps | grep postgres
@@ -1330,7 +1461,7 @@ docker exec -it keenchase-postgres psql -U nexus -d auth_center_db
 
 # === 上海应用 ===
 # SSH 连接
-ssh -i ~/.ssh/office_ubuntu_dev ubuntu@101.35.120.199
+ssh shanghai-tencent
 
 # PM2 管理
 pm2 list
@@ -1346,18 +1477,22 @@ sudo systemctl reload nginx
 
 ## 📋 版本历史
 
-### V3.0 (2026-01-29) - 当前版本
+### V3.0 (2026-01-31) - 当前版本
 
 **重大变更**：
 - ✅ 引入 Go 后端标准（前后端分离）
+- ✅ 前端技术栈标准化：Vite + React (推荐) / Next.js (SSR 场景)
 - ✅ 强制数据库命名规范（snake_case）
 - ✅ 强制 UUID 主键
 - ✅ 统一代码规范（Go + TypeScript）
 - ✅ 标准化部署流程
 
-**迁移指南**：
-- 账号中心: ✅ 已完成迁移
-- PR业务系统: ⏳ 计划中
+**系统迁移状态**：
+- 账号中心: ✅ 已完成迁移 (Next.js + Go)
+- PR业务系统: ✅ 已完成迁移 (Vite + React + Go)
+- AI生图系统: ✅ 已完成迁移 (Vite + React + Go)
+- 知识库系统: ✅ 已部署 (Next.js，暂无后端)
+- 客户管理系统: ✅ 已部署 (Next.js，暂无后端)
 
 ### V2.0 (2026-01-28)
 
@@ -1375,8 +1510,376 @@ sudo systemctl reload nginx
 ---
 
 **维护者**: KeeNChase Dev Team
-**最后更新**: 2026-01-29
+**最后更新**: 2026-01-31
 **下次审核**: 2026-02-29
+
+---
+
+## 🔗 账号中心集成指南
+
+**面向**: 业务系统集成账号中心认证
+**账号中心地址**: https://os.crazyaigc.com
+**架构版本**: V3.0 - 前后端分离 + Go 后端
+**最后更新**: 2026-01-31
+
+### 快速开始
+
+**5分钟完成对接**：
+
+```typescript
+// 1. 引导用户跳转到账号中心
+window.location.href = 'https://os.crazyaigc.com/api/auth/wechat/login?callbackUrl=https://your-domain.com/auth/callback'
+
+// 2. 在回调页面接收参数
+// URL: https://your-domain.com/auth/callback?userId=xxx&token=yyy
+
+// 3. 验证token并获取用户信息
+const response = await fetch('https://os.crazyaigc.com/api/auth/verify-token', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ token: 'yyy' })
+})
+const { valid, userId } = await response.json()
+
+// 4. 在你的数据库创建用户
+// INSERT INTO users (auth_center_user_id, ...) VALUES ('xxx', ...)
+```
+
+### 重要说明
+
+**账号中心前端的使用范围**：
+- ✅ 管理员登录和管理用户
+- ✅ 设置用户手机号和密码
+- ❌ **普通用户不需要访问**
+- ❌ **业务系统前端不需要集成**
+
+**业务系统集成方式**：
+- ✅ 只需调用账号中心的 **后端 API**
+- ✅ 用户全程在业务系统的前端完成操作
+
+**用户注册流程**：
+1. 用户**必须先通过微信登录**，系统自动创建账号
+2. 管理员人工审核用户身份
+3. 管理员为用户设置手机号和密码（可选）
+4. 用户可使用手机号+密码登录
+
+---
+
+### 核心架构：三层账号模型
+
+```
+第1层: User（用户层）- 真实的人
+├─ userId (UUID): 统一用户ID
+├─ unionId (VARCHAR): 微信 UnionID，跨应用统一标识
+└─ phoneNumber: 手机号（用于密码登录）
+
+第2层: UserAccount（登录入口层）- 各端的 openid
+├─ provider: 提供商（如 'wechat'）
+├─ appId: 应用 AppID
+├─ openId: 该应用下的 openid
+└─ type: 登录类型（'web' | 'mp' | 'miniapp' | 'app'）
+
+第3层: Session（会话层）- 登录会话管理
+├─ token: JWT token（7天有效）
+└─ expiresAt: 过期时间
+```
+
+**设计理念**：
+```
+unionid = 人（同一用户在不同应用）
+openid = 登录入口（同一应用不同用户）
+```
+
+---
+
+### API 接口说明
+
+#### 1. 发起微信登录（智能检测）
+
+**接口**: `GET /api/auth/wechat/login`
+
+**请求参数**:
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| callbackUrl | string | 是 | 登录后回调URL（需URL编码） |
+
+**请求示例**:
+```
+GET https://os.crazyaigc.com/api/auth/wechat/login?callbackUrl=https%3A%2F%2Fyour-domain.com%2Fauth%2Fcallback
+```
+
+**响应**:
+- 微信内置浏览器：跳转到公众号授权页面
+- 其他浏览器：跳转到开放平台扫码页面
+
+---
+
+#### 2. 验证Token
+
+**接口**: `POST /api/auth/verify-token`
+
+**请求体**:
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+```
+
+**响应示例**:
+```json
+{
+  "success": true,
+  "data": {
+    "valid": true,
+    "userId": "550e8400-e29b-41d4-a716-446655440000"
+  }
+}
+```
+
+---
+
+#### 3. 获取用户信息
+
+**接口**: `GET /api/auth/user-info`
+
+**请求头**:
+```
+Authorization: Bearer <token>
+```
+
+**响应示例**:
+```json
+{
+  "success": true,
+  "data": {
+    "userId": "550e8400-e29b-41d4-a716-446655440000",
+    "unionId": "oZh_a67J99sgfrHFX5pRPcXr0uQA",
+    "phoneNumber": "13800138000",
+    "email": null,
+    "createdAt": "2026-01-29T03:17:24.451Z",
+    "lastLoginAt": "2026-01-31T08:46:42.123Z",
+    "profile": {
+      "nickname": "微信昵称",
+      "avatarUrl": "https://wx.qlogo.cn/xxx"
+    },
+    "accounts": [
+      {
+        "provider": "wechat",
+        "type": "web",
+        "nickname": "微信昵称",
+        "avatarUrl": "https://wx.qlogo.cn/xxx",
+        "createdAt": "2026-01-29T03:17:24.451Z"
+      }
+    ]
+  }
+}
+```
+
+---
+
+#### 4. 密码登录
+
+**接口**: `POST /api/auth/password/login`
+
+**请求体**:
+```json
+{
+  "phoneNumber": "13800138000",
+  "password": "password123"
+}
+```
+
+**成功响应**:
+```json
+{
+  "success": true,
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "userId": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+---
+
+#### 5. 登出
+
+**接口**: `POST /api/auth/signout`
+
+**请求头**:
+```
+Authorization: Bearer <token>
+```
+
+---
+
+### 数据库集成
+
+#### 业务系统必需字段
+
+```sql
+-- 业务系统用户表示例
+CREATE TABLE users (
+  id VARCHAR(255) PRIMARY KEY,  -- 本地主键（CUID/UUID）
+  auth_center_user_id UUID UNIQUE NOT NULL,  -- ✅ 关联账号中心
+  role VARCHAR(50) DEFAULT 'USER',
+  profile JSONB,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 关键索引
+CREATE UNIQUE INDEX users_auth_center_user_id_idx
+  ON users(auth_center_user_id);
+```
+
+**字段说明**：
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| id | VARCHAR(255) | ✅ | 本地主键 |
+| auth_center_user_id | UUID | ✅ | **关联账号中心的 user_id** |
+| role | VARCHAR(50) | - | 业务角色 |
+| profile | JSONB | - | 用户配置信息 |
+
+---
+
+### 完整代码示例：Next.js App Router
+
+#### 登录页面
+
+```typescript
+// app/login/page.tsx
+'use client'
+
+export default function LoginPage() {
+  const handleWechatLogin = () => {
+    const redirectUri = encodeURIComponent(`${window.location.origin}/api/auth/callback`)
+    const authUrl = `https://os.crazyaigc.com/api/auth/wechat/login?callbackUrl=${redirectUri}`
+    window.location.href = authUrl
+  }
+
+  return (
+    <div>
+      <h1>登录</h1>
+      <button onClick={handleWechatLogin}>
+        微信登录
+      </button>
+    </div>
+  )
+}
+```
+
+#### 回调API
+
+```typescript
+// app/api/auth/callback/route.ts
+import { NextRequest, NextResponse } from 'next/server'
+import { PrismaClient } from '@prisma/client'
+
+const prisma = new PrismaClient()
+
+async function verifyToken(token: string) {
+  const response = await fetch('https://os.crazyaigc.com/api/auth/verify-token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token })
+  })
+
+  if (!response.ok) {
+    throw new Error('Token验证失败')
+  }
+
+  return await response.json()
+}
+
+export async function GET(request: NextRequest) {
+  const searchParams = request.nextUrl.searchParams
+  const userId = searchParams.get('userId')
+  const token = searchParams.get('token')
+
+  // 1. 验证参数
+  if (!userId || !token) {
+    return NextResponse.redirect(new URL('/login?error=missing_params', request.url))
+  }
+
+  try {
+    // 2. 验证token
+    const verifyResult = await verifyToken(token)
+
+    if (!verifyResult.success || !verifyResult.data.valid) {
+      return NextResponse.redirect(new URL('/login?error=invalid_token', request.url))
+    }
+
+    if (verifyResult.data.userId !== userId) {
+      return NextResponse.redirect(new URL('/login?error=user_mismatch', request.url))
+    }
+
+    // 3. 创建/获取本地用户
+    let user = await prisma.user.findUnique({
+      where: { authCenterUserId: userId }
+    })
+
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          id: cuid(),
+          authCenterUserId: userId,
+          role: 'USER'
+        }
+      })
+    }
+
+    // 4. 设置session
+    const response = NextResponse.redirect(new URL('/dashboard', request.url))
+    response.cookies.set('user_id', user.id, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24 * 7 // 7天
+    })
+
+    return response
+  } catch (error) {
+    console.error('登录失败:', error)
+    return NextResponse.redirect(new URL('/login?error=server_error', request.url))
+  }
+}
+```
+
+---
+
+### 常见问题
+
+**Q: 用户如何使用手机号+密码登录？**
+
+A: 用户必须先完成以下步骤：
+1. 用户首次必须使用微信登录，系统自动创建账号
+2. 管理员验证用户身份，确认用户信息真实性
+3. 管理员为用户设置手机号和密码
+4. 设置完成后，用户可使用手机号+密码登录
+
+**Q: 三层账号模型的优势是什么？**
+
+A:
+- ✅ `unionId` 统一用户标识
+- ✅ `UserAccount` 支持多个登录入口
+- ✅ 易于扩展（小程序、App等）
+- ✅ 符合微信 UnionID 机制标准
+
+**Q: Token过期怎么办？**
+
+A: Token有效期为 7 天，过期后需要重新登录。
+
+---
+
+### 联系支持
+
+**技术支持**:
+- 邮箱: support@crazyaigc.com
+- 文档: https://docs.crazyaigc.com/auth-center
+
+**需要帮助的场景**:
+1. 数据库接入（创建数据库、配置权限）
+2. 技术问题（API调用、集成难题、Bug反馈）
+3. 业务咨询（多业务系统互通、用户数据迁移）
 
 ---
 
@@ -1408,7 +1911,7 @@ A: 生产环境应该使用数据库迁移工具（如 golang-migrate）进行�
 **Q: 如何在本地测试跨服务器数据库连接？**
 A: 使用 SSH 隧道：
 ```bash
-ssh -i ~/.ssh/xia_mac_alicoud -f -N -L 5433:localhost:5432 root@47.110.82.96
+ssh -N -L 5433:localhost:5432 hangzhou-ali
 # 然后连接 localhost:5433
 ```
 
