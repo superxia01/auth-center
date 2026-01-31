@@ -1570,23 +1570,78 @@ sudo systemctl reload nginx
 
 **5分钟完成对接**：
 
+#### 前端部分（TypeScript/React）
+
 ```typescript
-// 1. 引导用户跳转到账号中心
-window.location.href = 'https://os.crazyaigc.com/api/auth/wechat/login?callbackUrl=https://your-domain.com/auth/callback'
+// 1. 引导用户跳转到业务系统的后端接口
+window.location.href = 'https://pr.crazyaigc.com/api/auth/wechat/login'
 
-// 2. 在回调页面接收参数
-// URL: https://your-domain.com/auth/callback?userId=xxx&token=yyy
+// 用户全程都在 pr.crazyaigc.com，看不到 os.crazyaigc.com
+```
 
-// 3. 验证token并获取用户信息
-const response = await fetch('https://os.crazyaigc.com/api/auth/verify-token', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ token: 'yyy' })
-})
-const { valid, userId } = await response.json()
+#### 后端部分（Go 示例）
 
-// 4. 在你的数据库创建用户
-// INSERT INTO users (auth_center_user_id, ...) VALUES ('xxx', ...)
+```go
+// 2. 业务系统后端：发起微信登录（代理接口）
+// GET /api/auth/wechat/login
+func WechatLogin(c *gin.Context) {
+    callbackUrl := "https://pr.crazyaigc.com/api/auth/callback"
+    authCenterURL := fmt.Sprintf(
+        "https://os.crazyaigc.com/api/auth/wechat/login?callbackUrl=%s",
+        url.QueryEscape(callbackUrl),
+    )
+    c.Redirect(302, authCenterURL)
+}
+
+// 3. 业务系统后端：接收回调（代理接口）
+// GET /api/auth/callback
+func AuthCallback(c *gin.Context) {
+    userId := c.Query("userId")
+    token := c.Query("token")
+
+    // 验证 token
+    verifyResp, _ := http.PostForm(
+        "https://os.crazyaigc.com/api/auth/verify-token",
+        url.Values{"token": {token}},
+    )
+
+    var result struct {
+        Success bool `json:"success"`
+        Data struct {
+            Valid  bool   `json:"valid"`
+            UserID string `json:"userId"`
+        } `json:"data"`
+    }
+    json.NewDecoder(verifyResp.Body).Decode(&result)
+
+    // 创建/获取本地用户
+    user := findOrCreateUser(result.Data.UserID)
+
+    // 设置 session
+    setSession(c, user)
+
+    // 跳转到业务系统首页
+    c.Redirect(302, "/dashboard")
+}
+```
+
+#### 完整流程
+
+```
+1. 用户在 pr.crazyaigc.com 点击"微信登录"
+   → 前端跳转到 /api/auth/wechat/login
+
+2. 业务系统后端转发请求到账号中心
+   → 后端到后端调用（用户看不到）
+
+3. 用户完成微信授权
+   → 回调到 pr.crazyaigc.com/api/auth/callback
+
+4. 业务系统后端接收 userId + token
+   → 验证 token
+   → 创建本地用户
+   → 设置 session
+   → 跳转到 /dashboard
 ```
 
 ### 重要说明
@@ -1598,8 +1653,31 @@ const { valid, userId } = await response.json()
 - ❌ **业务系统前端不需要集成**
 
 **业务系统集成方式**：
-- ✅ 只需调用账号中心的 **后端 API**
-- ✅ 用户全程在业务系统的前端完成操作
+- ✅ 后端调用账号中心的 **后端 API**
+- ✅ 用户全程在业务系统的网站完成操作
+- ✅ 用户看不到 os.crazyaigc.com
+
+**⚠️ 重要：用户不可见原则**
+
+为了保持用户体验，**普通用户不应该看到 os.crazyaigc.com 域名**。业务系统必须通过**后端代理**实现：
+
+```
+✅ 正确方式（用户看不到账号中心）：
+用户在 pr.crazyaigc.com
+  → 点击登录
+  → pr.crazyaigc.com/api/auth/wechat/login（业务系统后端代理）
+  → 微信授权
+  → pr.crazyaigc.com/api/auth/callback（业务系统后端接收）
+  → pr.crazyaigc.com/dashboard
+
+❌ 错误方式（用户会跳到账号中心）：
+用户在 pr.crazyaigc.com
+  → 点击登录
+  → os.crazyaigc.com/api/auth/wechat/login（用户看到了账号中心！）
+  → 微信授权
+  → pr.crazyaigc.com/api/auth/callback
+  → pr.crazyaigc.com/dashboard
+```
 
 **用户注册流程**：
 1. 用户**必须先通过微信登录**，系统自动创建账号
@@ -1785,19 +1863,16 @@ CREATE UNIQUE INDEX users_auth_center_user_id_idx
 
 ---
 
-### 完整代码示例：Next.js App Router
+### 完整代码示例
 
-#### 登录页面
+#### 前端：React/Vite 登录页面
 
 ```typescript
-// app/login/page.tsx
-'use client'
-
+// src/pages/Login.tsx
 export default function LoginPage() {
   const handleWechatLogin = () => {
-    const redirectUri = encodeURIComponent(`${window.location.origin}/api/auth/callback`)
-    const authUrl = `https://os.crazyaigc.com/api/auth/wechat/login?callbackUrl=${redirectUri}`
-    window.location.href = authUrl
+    // 跳转到业务系统的后端代理接口
+    window.location.href = '/api/auth/wechat/login'
   }
 
   return (
@@ -1811,86 +1886,243 @@ export default function LoginPage() {
 }
 ```
 
-#### 回调API
+#### 后端：Go 业务系统代理实现
+
+```go
+// internal/handler/auth.go
+package handler
+
+import (
+    "encoding/json"
+    "fmt"
+    "net/http"
+    "net/url"
+
+    "github.com/gin-gonic/gin"
+)
+
+// 1. 发起微信登录（代理接口）
+// GET /api/auth/wechat/login
+func WechatLogin(c *gin.Context) {
+    // 业务系统的回调地址
+    callbackUrl := "https://pr.crazyaigc.com/api/auth/callback"
+
+    // 转发到账号中心
+    authCenterURL := fmt.Sprintf(
+        "https://os.crazyaigc.com/api/auth/wechat/login?callbackUrl=%s",
+        url.QueryEscape(callbackUrl),
+    )
+
+    // 重定向用户（用户看到的是微信授权页面）
+    c.Redirect(http.StatusFound, authCenterURL)
+}
+
+// 2. 接收账号中心回调（代理接口）
+// GET /api/auth/callback
+func AuthCallback(c *gin.Context) {
+    userId := c.Query("userId")
+    token := c.Query("token")
+
+    // 验证参数
+    if userId == "" || token == "" {
+        c.Redirect(http.StatusFound, "/login?error=missing_params")
+        return
+    }
+
+    // 调用账号中心验证 token
+    verifyResp, err := http.PostForm(
+        "https://os.crazyaigc.com/api/auth/verify-token",
+        url.Values{"token": {token}},
+    )
+    if err != nil {
+        c.Redirect(http.StatusFound, "/login?error=verify_failed")
+        return
+    }
+    defer verifyResp.Body.Close()
+
+    var result struct {
+        Success bool `json:"success"`
+        Data struct {
+            Valid  bool   `json:"valid"`
+            UserID string `json:"userId"`
+        } `json:"data"`
+    }
+    if err := json.NewDecoder(verifyResp.Body).Decode(&result); err != nil {
+        c.Redirect(http.StatusFound, "/login?error=decode_failed")
+        return
+    }
+
+    // 验证 token
+    if !result.Success || !result.Data.Valid || result.Data.UserID != userId {
+        c.Redirect(http.StatusFound, "/login?error=invalid_token")
+        return
+    }
+
+    // 3. 创建/获取本地用户
+    user, err := findOrCreateUser(userId)
+    if err != nil {
+        c.Redirect(http.StatusFound, "/login?error=user_creation_failed")
+        return
+    }
+
+    // 4. 设置 session
+    setSession(c, user)
+
+    // 5. 跳转到首页
+    c.Redirect(http.StatusFound, "/dashboard")
+}
+
+// 查找或创建本地用户
+func findOrCreateUser(authCenterUserID string) (*User, error) {
+    var user User
+    result := db.Where("auth_center_user_id = ?", authCenterUserID).First(&user)
+
+    if result.Error != nil {
+        // 用户不存在，创建新用户
+        user = User{
+            ID:                generateID(),
+            AuthCenterUserID:  authCenterUserID,
+            Role:              "USER",
+        }
+        if err := db.Create(&user).Error; err != nil {
+            return nil, err
+        }
+    }
+
+    return &user, nil
+}
+
+// 设置 session
+func setSession(c *gin.Context, user *User) {
+    // 使用 cookie 或 JWT 设置 session
+    c.SetCookie(
+        "user_id",
+        user.ID,
+        3600*24*7, // 7天
+        "/",
+        "pr.crazyaigc.com",
+        true,      // HTTPS only
+        true,      // httpOnly
+    )
+}
+```
+
+---
+
+### Next.js 后端代理示例（如果使用 Next.js API Routes）
+
+#### 前端登录页面
 
 ```typescript
+// app/login/page.tsx
+'use client'
+
+export default function LoginPage() {
+  const handleWechatLogin = () => {
+    // 跳转到业务系统的后端代理接口
+    window.location.href = '/api/auth/wechat/login'
+  }
+
+  return (
+    <div>
+      <h1>登录</h1>
+      <button onClick={handleWechatLogin}>
+        微信登录
+      </button>
+    </div>
+  )
+}
+```
+
+#### 后端代理接口
+
+```typescript
+// app/api/auth/wechat/login/route.ts
+import { NextResponse } from 'next/server'
+
+export async function GET() {
+    const callbackUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/callback`
+    const authCenterUrl = `https://os.crazyaigc.com/api/auth/wechat/login?callbackUrl=${encodeURIComponent(callbackUrl)}`
+
+    return NextResponse.redirect(authCenterUrl)
+}
+
 // app/api/auth/callback/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { PrismaClient } from '@prisma/client'
 
 const prisma = new PrismaClient()
 
-async function verifyToken(token: string) {
-  const response = await fetch('https://os.crazyaigc.com/api/auth/verify-token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ token })
-  })
-
-  if (!response.ok) {
-    throw new Error('Token验证失败')
-  }
-
-  return await response.json()
-}
-
 export async function GET(request: NextRequest) {
-  const searchParams = request.nextUrl.searchParams
-  const userId = searchParams.get('userId')
-  const token = searchParams.get('token')
+    const searchParams = request.nextUrl.searchParams
+    const userId = searchParams.get('userId')
+    const token = searchParams.get('token')
 
-  // 1. 验证参数
-  if (!userId || !token) {
-    return NextResponse.redirect(new URL('/login?error=missing_params', request.url))
-  }
+    if (!userId || !token) {
+        return NextResponse.redirect(new URL('/login?error=missing_params', request.url))
+    }
 
-  try {
-    // 2. 验证token
-    const verifyResult = await verifyToken(token)
+    // 验证 token
+    const verifyResp = await fetch('https://os.crazyaigc.com/api/auth/verify-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token })
+    })
+
+    const verifyResult = await verifyResp.json()
 
     if (!verifyResult.success || !verifyResult.data.valid) {
-      return NextResponse.redirect(new URL('/login?error=invalid_token', request.url))
+        return NextResponse.redirect(new URL('/login?error=invalid_token', request.url))
     }
 
-    if (verifyResult.data.userId !== userId) {
-      return NextResponse.redirect(new URL('/login?error=user_mismatch', request.url))
-    }
-
-    // 3. 创建/获取本地用户
+    // 创建/获取本地用户
     let user = await prisma.user.findUnique({
-      where: { authCenterUserId: userId }
+        where: { authCenterUserId: userId }
     })
 
     if (!user) {
-      user = await prisma.user.create({
-        data: {
-          id: cuid(),
-          authCenterUserId: userId,
-          role: 'USER'
-        }
-      })
+        user = await prisma.user.create({
+            data: {
+                id: cuid(),
+                authCenterUserId: userId,
+                role: 'USER'
+            }
+        })
     }
 
-    // 4. 设置session
+    // 设置 session
     const response = NextResponse.redirect(new URL('/dashboard', request.url))
     response.cookies.set('user_id', user.id, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 7 // 7天
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 60 * 60 * 24 * 7
     })
 
     return response
-  } catch (error) {
-    console.error('登录失败:', error)
-    return NextResponse.redirect(new URL('/login?error=server_error', request.url))
-  }
 }
 ```
 
 ---
 
 ### 常见问题
+
+**Q: 为什么需要业务系统后端代理？**
+
+A: 为了保持用户体验一致性：
+- ✅ 用户全程在业务系统域名下操作（pr.crazyaigc.com）
+- ✅ 用户看不到账号中心的域名（os.crazyaigc.com）
+- ✅ 用户感知不到账号中心的存在
+
+**Q: 后端代理会增加复杂度吗？**
+
+A: 不会，代理实现非常简单：
+```go
+// 发起登录：302 重定向到账号中心
+c.Redirect(302, authCenterURL)
+
+// 接收回调：验证 token + 创建本地用户
+```
 
 **Q: 用户如何使用手机号+密码登录？**
 
