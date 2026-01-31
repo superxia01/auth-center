@@ -1,6 +1,8 @@
 package service
 
 import (
+	"time"
+
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/keenchase/auth-center/internal/models"
@@ -23,6 +25,12 @@ func VerifyPassword(db *gorm.DB, phoneNumber, password string) (*models.User, er
 	}
 
 	return &user, nil
+}
+
+// UpdateLastLogin 更新最后登录时间
+func UpdateLastLogin(db *gorm.DB, userID string) error {
+	now := time.Now()
+	return db.Model(&models.User{}).Where("user_id = ?", userID).Update("last_login_at", now).Error
 }
 
 // SetPhonePassword 设置手机号和密码

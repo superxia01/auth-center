@@ -345,10 +345,10 @@ Content-Type: application/json
 
 **接口**: `GET /api/auth/user-info`
 
-**请求参数**:
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| token | string | 是 | JWT token |
+**请求头**:
+```
+Authorization: Bearer <token>
+```
 
 **响应示例**:
 ```json
@@ -357,22 +357,39 @@ Content-Type: application/json
   "data": {
     "userId": "550e8400-e29b-41d4-a716-446655440000",
     "unionId": "oZh_a67J99sgfrHFX5pRPcXr0uQA",
-    "phoneNumber": null,
+    "phoneNumber": "13800138000",
     "email": null,
     "createdAt": "2026-01-29T03:17:24.451Z",
+    "lastLoginAt": "2026-01-31T08:46:42.123Z",
+    "profile": {
+      "nickname": "微信昵称",
+      "avatarUrl": "https://wx.qlogo.cn/xxx"
+    },
     "accounts": [
       {
         "provider": "wechat",
-        "appId": "wxe3453a6c5c8ec701",
-        "openId": "oBwJS2WzgS6DgKAJcUN7GLa-IA2k",
         "type": "web",
-        "nickname": "用户昵称",
+        "nickname": "微信昵称",
+        "avatarUrl": "https://wx.qlogo.cn/xxx",
         "createdAt": "2026-01-29T03:17:24.451Z"
       }
     ]
   }
 }
 ```
+
+**字段说明**:
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| userId | string | 统一用户ID |
+| unionId | string | 微信 UnionID |
+| phoneNumber | string | 手机号（如已设置） |
+| email | string | 邮箱（如已设置） |
+| createdAt | string | 注册时间 |
+| lastLoginAt | string | 最后登录时间 |
+| profile.nickname | string | 用户昵称（来自微信） |
+| profile.avatarUrl | string | 用户头像（来自微信） |
+| accounts | array | 登录账号列表 |
 
 ---
 
@@ -841,7 +858,7 @@ if (tokenExpired) {
 
 ---
 
-**文档版本**: V3.0.1
+**文档版本**: V3.0.2
 **最后更新**: 2026-01-31
 **架构版本**: 前后端分离 + Go 后端 + 三层账号模型 (V3.0)
 **维护团队**: KeeNChase 账号中心团队

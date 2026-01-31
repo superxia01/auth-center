@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/keenchase/auth-center/internal/config"
+	"github.com/keenchase/auth-center/internal/models"
 	"github.com/keenchase/auth-center/internal/service"
 	"gorm.io/gorm"
 )
@@ -158,6 +159,9 @@ func WeChatLogin(db *gorm.DB) gin.HandlerFunc {
 			})
 			return
 		}
+
+		// 更新最后登录时间
+		service.UpdateLastLogin(db, user.UserID)
 
 		c.JSON(http.StatusOK, LoginResponse{
 			Success: true,
@@ -466,14 +470,9 @@ func GetUserInfo(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID := c.GetString("userId")
 
-		var user struct {
-			UserID    string `json:"userId"`
-			UnionID   string `json:"unionId"`
-			Email     string `json:"email"`
-			Phone     string `json:"phone"`
-		}
-
-		if err := db.Table("users").Where("userId = ?", userID).First(&user).Error; err != nil {
+		// 查询用户基本信息
+		var user models.User
+		if err := db.Preload("Accounts").Where("user_id = ?", userID).First(&user).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{
 				"success": false,
 				"error":   "用户不存在",
@@ -481,9 +480,44 @@ func GetUserInfo(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// 构建账号列表（包含昵称和头像）
+		accounts := make([]map[string]interface{}, 0, len(user.Accounts))
+		for _, account := range user.Accounts {
+			accounts = append(accounts, map[string]interface{}{
+				"provider":   account.Provider,
+				"type":       account.Type,
+				"nickname":   account.Nickname,
+				"avatarUrl":  account.AvatarURL,
+				"createdAt":  account.CreatedAt,
+			})
+		}
+
+		// 从微信账号获取昵称和头像（优先使用最近登录的账号）
+		var nickname, avatarUrl string
+		if len(user.Accounts) > 0 {
+			// 使用第一个账号（通常是最近登录的）
+			nickname = user.Accounts[0].Nickname
+			avatarUrl = user.Accounts[0].AvatarURL
+		}
+
+		// 构建返回数据
+		data := map[string]interface{}{
+			"userId":      user.UserID,
+			"unionId":     user.UnionID,
+			"phoneNumber": user.PhoneNumber,
+			"email":       user.Email,
+			"createdAt":   user.CreatedAt,
+			"lastLoginAt": user.LastLoginAt,
+			"profile": map[string]interface{}{
+				"nickname":  nickname,
+				"avatarUrl": avatarUrl,
+			},
+			"accounts": accounts,
+		}
+
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
-			"data":    user,
+			"data":    data,
 		})
 	}
 }
@@ -544,6 +578,9 @@ func PasswordLogin(db *gorm.DB) gin.HandlerFunc {
 			})
 			return
 		}
+
+		// 更新最后登录时间
+		service.UpdateLastLogin(db, user.UserID)
 
 		c.JSON(http.StatusOK, LoginResponse{
 			Success: true,

@@ -11,6 +11,7 @@ type User struct {
 	PhoneNumber  string         `gorm:"uniqueIndex;column:phone_number;type:varchar(255)" json:"phoneNumber,omitempty"`
 	PasswordHash string         `gorm:"column:password_hash;type:varchar(255)" json:"-"`
 	Email        string         `gorm:"uniqueIndex;column:email;type:varchar(255)" json:"email,omitempty"`
+	LastLoginAt  *time.Time     `gorm:"column:last_login_at;type:timestamp with time zone" json:"lastLoginAt,omitempty"`
 	CreatedAt    time.Time      `gorm:"column:created_at;type:timestamp with time zone" json:"createdAt"`
 	UpdatedAt    time.Time      `gorm:"column:updated_at;type:timestamp with time zone" json:"updatedAt"`
 	Accounts     []UserAccount  `gorm:"foreignKey:UserID;references:UserID" json:"accounts,omitempty"`
