@@ -58,9 +58,9 @@ func GetUsers(db *gorm.DB, page, pageSize int) ([]map[string]interface{}, int64,
 		return nil, 0, err
 	}
 
-	// 分页查询用户，预加载账号信息
+	// 分页查询用户，预加载账号和会话信息
 	offset := (page - 1) * pageSize
-	if err := db.Preload("Accounts").Limit(pageSize).Offset(offset).Find(&users).Error; err != nil {
+	if err := db.Preload("Accounts").Preload("Sessions").Limit(pageSize).Offset(offset).Find(&users).Error; err != nil {
 		return nil, 0, err
 	}
 
@@ -79,6 +79,18 @@ func GetUsers(db *gorm.DB, page, pageSize int) ([]map[string]interface{}, int64,
 				"nickname":   acc.Nickname,
 				"avatarUrl":  acc.AvatarURL,
 				"createdAt":  acc.CreatedAt,
+			}
+		}
+
+		// 构建会话信息列表
+		sessions := make([]map[string]interface{}, len(user.Sessions))
+		for j, sess := range user.Sessions {
+			sessions[j] = map[string]interface{}{
+				"id":         sess.ID,
+				"token":      sess.Token,
+				"deviceInfo": sess.DeviceInfo,
+				"expiresAt":  sess.ExpiresAt,
+				"createdAt":  sess.CreatedAt,
 			}
 		}
 
@@ -106,9 +118,32 @@ func GetUsers(db *gorm.DB, page, pageSize int) ([]map[string]interface{}, int64,
 			"updatedAt":    user.UpdatedAt,
 			"lastLoginAt":  user.LastLoginAt,
 			"accounts":     accounts,
+			"sessions":     sessions,
 			"loginMethods": loginMethods,
 		}
 	}
 
 	return result, total, nil
+}
+
+// GetSessions 获取用户的所有会话
+func GetSessions(db *gorm.DB, userID string) ([]map[string]interface{}, error) {
+	var sessions []models.Session
+
+	if err := db.Where("user_id = ?", userID).Order("created_at DESC").Find(&sessions).Error; err != nil {
+		return nil, err
+	}
+
+	result := make([]map[string]interface{}, len(sessions))
+	for i, sess := range sessions {
+		result[i] = map[string]interface{}{
+			"id":         sess.ID,
+			"token":      sess.Token,
+			"deviceInfo": sess.DeviceInfo,
+			"expiresAt":  sess.ExpiresAt,
+			"createdAt":  sess.CreatedAt,
+		}
+	}
+
+	return result, nil
 }

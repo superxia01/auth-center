@@ -704,3 +704,27 @@ func SignOut(db *gorm.DB) gin.HandlerFunc {
 		})
 	}
 }
+
+// GetSessions 获取当前用户的会话列表
+func GetSessions(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID := c.GetString("userId")
+
+		sessions, err := service.GetSessions(db, userID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"error":   "获取会话列表失败",
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"data": gin.H{
+				"sessions": sessions,
+			},
+		})
+	}
+}
+

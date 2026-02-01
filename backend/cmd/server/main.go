@@ -62,6 +62,7 @@ func main() {
 			auth.POST("/wechat/open-platform-callback", handler.OpenPlatformCallback(db))
 			auth.POST("/verify-token", handler.VerifyToken(db))
 			auth.GET("/user-info", middleware.Auth(db), handler.GetUserInfo(db))
+			auth.GET("/sessions", middleware.Auth(db), handler.GetSessions(db))
 			auth.POST("/password/login", handler.PasswordLogin(db))
 			auth.POST("/signout", handler.SignOut(db))
 		}

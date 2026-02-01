@@ -1,6 +1,6 @@
 # KeeNChase Nexus - 系统架构总览（宪法）
 
-**最后更新**: 2026-01-30
+**最后更新**: 2026-01-31
 **版本**: V3.0 (前后端分离 + Go 后端 + 统一规范)
 **性质**: 所有业务系统、账号中心、数据库的技术规范和部署标准
 
@@ -16,7 +16,7 @@
 
 | 系统 | 域名 | 状态 | 架构 |
 |------|------|------|------|
-| 账号中心 | os.crazyaigc.com | ✅ 已部署 | **V3.0: Go + Next.js** |
+| 账号中心 | os.crazyaigc.com | ✅ 已部署 | **V3.0: Go + Vite + React + MUI** |
 | PR业务系统 | pr.crazyaigc.com | ✅ 已部署 | **V3.0: Go + Vite + React** ✅ 100% |
 | AI生图系统 | pixel.crazyaigc.com | ✅ 已部署 | **V3.0: Go + Vite + React** ✅ 100% |
 | 知识库系统 | study.crazyaigc.com | ✅ 已部署 | V1.0: Next.js |
@@ -47,7 +47,7 @@ Next.js Next.js  Go + Vite/React
 │ os.crazyaigc  │           │ pr.crazyaigc  │           │pixel.crazyaigc│
 │     .com      │           │     .com      │           │     .com      │
 │  (账号中心)    │           │  (PR业务)     │           │  (AI生图)     │
-│  ✅ 上海部署    │           │  ✅ 上海部署    │           │  ✅ Coze部署   │
+│  ✅ 上海部署    │           │  ✅ 上海部署    │           │  ✅ 上海部署   │
 └───────┬───────┘           └───────┬───────┘           └───────┬───────┘
         │                           │                           │
         ▼                           ▼                           ▼
@@ -131,7 +131,7 @@ Next.js Next.js  Go + Vite/React
 
 **用途**：统一的用户认证服务
 
-**架构**：V3.0 前后端分离（Go + Next.js）
+**架构**：V3.0 前后端分离（Go + Vite + React + MUI）
 
 **部署地址**：https://os.crazyaigc.com
 
@@ -178,25 +178,12 @@ Next.js Next.js  Go + Vite/React
 │   └── [保留作为拆分其他系统的参考]
 │
 ├── 📦 auth-center = 账号中心 (os.crazyaigc.com) - 独立仓库
-│   ├── frontend/                  ← Next.js 前端 (管理员后台)
-│   │   ├── src/
-│   │   ├── package.json
-│   │   └── next.config.js
-│   ├── backend/                   ← Go 后端
-│   │   ├── cmd/server/main.go
-│   │   ├── internal/
-│   │   │   ├── handler/
-│   │   │   ├── service/
-│   │   │   ├── repository/
-│   │   │   ├── middleware/
-│   │   │   ├── models/
-│   │   │   └── config/
-│   │   ├── go.mod
-│   │   └── bin/server
-│   ├── prisma/
-│   │   └── schema.prisma
-│   ├── .git/
-│   └── README.md
+│   ├── frontend-vite/             ← Vite + React + MUI 前端
+│   ├── backend/                   ← Go 后端 (GORM)
+│   ├── prisma/schema.prisma       # 参考模型
+│   ├── README.md                  # 详细文档
+│   └── docs/
+│       └── ARCHITECTURE_OVERVIEW.md
 │
 ├── 📦 pr-business = PR业务系统 (pr.crazyaigc.com) - 独立仓库
 │   ├── frontend/                  ← Vite + React 前端 (SPA)
@@ -285,9 +272,9 @@ Next.js Next.js  Go + Vite/React
 
 📍 上海服务器 (101.35.120.199) - 自有应用服务器
 ├─ ✅ os.crazyaigc.com (账号中心) - V3.0 架构
-│   ├─ 前端: Next.js :3000 (PM2 管理)
+│   ├─ 前端: Vite + React 静态文件 (Nginx 直接服务)
 │   ├─ 后端: Go API :8080 (Systemd 管理)
-│   ├─ 框架: Next.js 15 + Go 1.25
+│   ├─ 框架: Vite 7 + React 19 + MUI 7 + Go 1.25
 │   ├─ SSL证书: 有效期至 2026-04-27
 │   └─ 状态: ✅ 在线运行
 │
@@ -301,7 +288,7 @@ Next.js Next.js  Go + Vite/React
 ├─ ✅ pixel.crazyaigc.com (AI生图) - V3.0 架构
 │   ├─ 前端: Vite + React 静态文件 (Nginx 直接服务)
 │   ├─ 后端: Go API :8082 (Systemd 管理)
-│   ├─ 框架: Vite 6 + React 19 + Go 1.25
+│   ├─ 框架: Vite 6 + React 19 + Tailwind + Zustand + Go 1.21
 │   ├─ SSL证书: 有效期至 2026-04-27
 │   └─ 状态: ✅ 在线运行
 │
@@ -369,7 +356,7 @@ Next.js Next.js  Go + Vite/React
 ✅ 样式: Tailwind CSS
 ✅ 状态管理: Zustand / React Context
 ✅ HTTP 客户端: Axios / Fetch API
-✅ 组件库: Radix UI / shadcn/ui
+✅ 组件库: Radix UI / shadcn/ui / Material-UI
 ✅ 表单处理: React Hook Form
 ```
 
@@ -384,8 +371,8 @@ Next.js Next.js  Go + Vite/React
 ```
 
 **架构选择原则**:
-- **Vite + React**: 适用于大多数业务系统（PR、Pixel 等），性能更好，部署更简单
-- **Next.js**: 仅用于需要 SEO 或 SSR 的特殊场景（如账号中心管理后台）
+- **Vite + React**: 适用于所有 V3.0 业务系统（账号中心、PR、Pixel 等），性能更好，部署更简单
+- **Next.js**: 仅用于需要 SEO 或 SSR 的特殊场景
 
 #### 后端技术栈
 ```
@@ -702,6 +689,12 @@ metadata JSON              -- ❌ 使用 JSONB
 ## 🗄️ 数据库架构规范
 
 ### 统一数据库服务器（杭州）
+
+**⚠️ auth-center 详细实现**：
+- 数据库表结构、API 路由、后端目录结构等详细信息请查看 **auth-center/README.md**
+- auth-center 使用 **GORM**（不使用 Prisma）
+
+---
 
 **服务器信息**：
 ```
@@ -1020,7 +1013,7 @@ WHERE u.id = 'xxx';
     └── 连接: PostgreSQL (47.110.82.96:5432)
 ```
 
-**架构 B: Next.js (仅用于 SSR 场景)**
+**架构 B: Next.js (仅用于 SSR 场景，已不再推荐用于新系统)**
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │               Next.js 系统部署架构                          │
@@ -1046,6 +1039,8 @@ WHERE u.id = 'xxx';
     ├── 功能: RESTful API
     └── 连接: PostgreSQL (47.110.82.96:5432)
 ```
+
+**注意**：所有新系统应使用 **架构 A (Vite + React)**。账号中心已从 Next.js 迁移到 Vite + React。
 
 ### 部署流程（标准）
 
@@ -1080,35 +1075,43 @@ WHERE u.id = 'xxx';
 
 ---
 
-#### 1. 前端部署（Vite + React - 推荐）
+#### 1. 前端部署（Vite + React - 推荐，auth-center 使用此架构）
 
 ```bash
 # === 本地开发 ===
-cd frontend/
+cd frontend-vite/  # 或 frontend/
 
 # 1. 安装依赖
 npm install
 
 # 2. 环境配置
 cat > .env.production << EOF
-VITE_API_URL=https://api.example.com
-VITE_APP_URL=https://example.com
+VITE_API_URL=https://os.crazyaigc.com/api
+VITE_APP_URL=https://os.crazyaigc.com
 EOF
 
 # 3. 开发（可选）
 npm run dev
 
 # 4. 类型检查 + 构建
-npm run build:check
+npm run build  # tsc -b && vite build
 
 # === 部署到服务器 ===
 
 # 5. 上传构建产物（静态文件）
-rsync -avz dist/ shanghai-tencent:/var/www/example-frontend/
+rsync -avz dist/ shanghai-tencent:/var/www/auth-center-frontend/
 
 # 6. Nginx 配置（直接服务静态文件）
 # sudo nginx -t && sudo systemctl reload nginx
 ```
+
+**auth-center 前端技术栈**：
+- Vite 7.2.4
+- React 19.2.0
+- React Router 7.13.0
+- Material-UI 7.3.7
+- Tailwind CSS 4.x
+- TypeScript 5.9.3
 
 **Nginx 配置（Vite 静态文件）**:
 ```nginx
@@ -1824,7 +1827,7 @@ sudo systemctl reload nginx
 - ✅ 标准化部署流程
 
 **系统迁移状态**：
-- 账号中心: ✅ 已完成迁移 (Next.js + Go)
+- 账号中心: ✅ 已完成迁移 (Vite + React + MUI + Go)
 - PR业务系统: ✅ 已完成迁移 (Vite + React + Go)
 - AI生图系统: ✅ 已完成迁移 (Vite + React + Go)
 - 知识库系统: ✅ 已部署 (Next.js，暂无后端)
@@ -1846,7 +1849,7 @@ sudo systemctl reload nginx
 ---
 
 **维护者**: KeeNChase Dev Team
-**最后更新**: 2026-01-31
+**最后更新**: 2026-01-31 (更新 auth-center 实际实现：Vite + React + MUI + GORM)
 **下次审核**: 2026-02-29
 
 ---
@@ -2196,6 +2199,60 @@ Authorization: Bearer <token>
 ```
 Authorization: Bearer <token>
 ```
+
+---
+
+#### 6. 获取会话列表
+
+**接口**: `GET /api/auth/sessions`
+
+**说明**: 获取当前登录用户的所有会话信息（可用于设备管理、安全监控）
+
+**请求头**:
+```
+Authorization: Bearer <token>
+```
+
+**响应示例**:
+```json
+{
+  "success": true,
+  "data": {
+    "sessions": [
+      {
+        "id": "550e8400-e29b-41d4-a716-446655440000",
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+        "deviceInfo": {
+          "ip": "123.45.67.89",
+          "platform": "Windows",
+          "deviceType": "PC",
+          "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        },
+        "expiresAt": "2026-02-08T15:30:00Z",
+        "createdAt": "2026-02-01T10:14:29.661Z"
+      },
+      {
+        "id": "660e9511-f0a3-52c5-b827-557771551111",
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+        "deviceInfo": {
+          "ip": "123.45.67.90",
+          "platform": "iOS",
+          "deviceType": "Mobile",
+          "userAgent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X)"
+        },
+        "expiresAt": "2026-02-08T16:20:00Z",
+        "createdAt": "2026-02-01T11:30:00.000Z"
+      }
+    ]
+  }
+}
+```
+
+**使用场景**:
+- 用户查看自己的登录设备列表
+- 安全监控（异地登录提醒）
+- 设备管理（远程登出其他设备）
+- 会话统计（当前活跃会话数）
 
 ---
 
