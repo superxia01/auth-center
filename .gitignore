@@ -45,3 +45,6 @@ next-env.d.ts
 
 # Prisma
 prisma/migrations/**/migration.sql
+
+# 架构文档（包含敏感信息，不提交到GitHub）
+docs/ARCHITECTURE_OVERVIEW.md
