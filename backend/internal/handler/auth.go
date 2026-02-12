@@ -188,6 +188,13 @@ func WeChatLogin(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// 记录登录流水
+		loginMethod := "wechat_open"
+		if req.Type == "mp" {
+			loginMethod = "wechat_mp"
+		}
+		_ = service.CreateLoginLog(db, user.UserID, req.CallbackURL, loginMethod)
+
 		// 更新最后登录时间
 		service.UpdateLastLogin(db, user.UserID)
 
@@ -435,8 +442,10 @@ func WeChatMPRedirect(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// 重定向到业务系统，带上 userId 和 token
 		callbackURL := state
+		_ = service.CreateLoginLog(db, result.UserID, callbackURL, "wechat_mp")
+
+		// 重定向到业务系统，带上 userId 和 token
 		if callbackURL == "" {
 			callbackURL = "/admin/dashboard"
 		}
@@ -478,8 +487,21 @@ func OpenPlatformRedirect(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// 重定向到业务系统，带上 code 和 type
-		// 业务系统将用 code 调用我们的 API 获取用户信息
+		// 完成微信登录流程，用 code 换 token（统一为 token 模式）
+		cfg := config.Load()
+		result, err := service.CompleteWeChatLogin(db, cfg, code, false) // isMP = false (开放平台)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"error":   "登录失败: " + err.Error(),
+			})
+			return
+		}
+
+		// 记录登录流水
+		_ = service.CreateLoginLog(db, result.UserID, callbackURL, "wechat_open")
+
+		// 重定向到业务系统，带上 token
 		u, err := url.Parse(callbackURL)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
@@ -489,10 +511,9 @@ func OpenPlatformRedirect(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// 添加 code 和 type 参数
+		// 添加 token 参数
 		query := u.Query()
-		query.Set("code", code)
-		query.Set("type", "open") // 标识为开放平台登录
+		query.Set("token", result.Token)
 		u.RawQuery = query.Encode()
 
 		c.Redirect(http.StatusFound, u.String())

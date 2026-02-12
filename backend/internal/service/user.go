@@ -64,6 +64,13 @@ func GetUsers(db *gorm.DB, page, pageSize int) ([]map[string]interface{}, int64,
 		return nil, 0, err
 	}
 
+	// 获取登录过的业务系统
+	userIDs := make([]string, len(users))
+	for i, u := range users {
+		userIDs[i] = u.UserID
+	}
+	loginSources := GetUserLoginSources(db, userIDs)
+
 	// 转换为返回格式，包含所有字段
 	result := make([]map[string]interface{}, len(users))
 	for i, user := range users {
@@ -109,17 +116,22 @@ func GetUsers(db *gorm.DB, page, pageSize int) ([]map[string]interface{}, int64,
 			}
 		}
 
+		loginSourcesList := loginSources[user.UserID]
+		if loginSourcesList == nil {
+			loginSourcesList = []LoginSourceItem{}
+		}
 		result[i] = map[string]interface{}{
-			"userId":       user.UserID,
-			"unionId":      user.UnionID,
-			"phoneNumber":  user.PhoneNumber,
-			"email":        user.Email,
-			"createdAt":    user.CreatedAt,
-			"updatedAt":    user.UpdatedAt,
-			"lastLoginAt":  user.LastLoginAt,
-			"accounts":     accounts,
-			"sessions":     sessions,
-			"loginMethods": loginMethods,
+			"userId":        user.UserID,
+			"unionId":       user.UnionID,
+			"phoneNumber":   user.PhoneNumber,
+			"email":         user.Email,
+			"createdAt":     user.CreatedAt,
+			"updatedAt":     user.UpdatedAt,
+			"lastLoginAt":   user.LastLoginAt,
+			"accounts":      accounts,
+			"sessions":      sessions,
+			"loginMethods":  loginMethods,
+			"loginSources":  loginSourcesList,
 		}
 	}
 

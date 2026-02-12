@@ -25,8 +25,9 @@ import {
   IconButton,
   Tooltip,
   Avatar,
-  Card,
-  CardContent,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
   Select,
   MenuItem,
   FormControl,
@@ -45,6 +46,7 @@ import {
   Error as ErrorIcon,
   Close as CloseIcon,
   AccountCircle as AccountCircleIcon,
+  ExpandMore as ExpandMoreIcon,
 } from '@mui/icons-material'
 import { format } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
@@ -89,6 +91,7 @@ interface User {
     wechat: boolean
     password: boolean
   }
+  loginSources?: { sourceHost: string; lastLoginAt: string }[]
 }
 
 interface ApiResponse {
@@ -351,90 +354,6 @@ export default function AdminDashboard() {
     }
   }
 
-  // 生成历史事件列表
-  const generateHistory = (user: User) => {
-    const events: Array<{
-      title: string
-      description: string
-      timestamp: string
-      type: 'register' | 'account' | 'session'
-      status: 'success' | 'primary' | 'warning' | 'error'
-    }> = []
-
-    // 按时间排序所有事件
-    const allEvents: Array<{ type: string; data: any; timestamp: string }> = []
-
-    // 注册事件
-    allEvents.push({
-      type: 'register',
-      data: user,
-      timestamp: user.createdAt,
-    })
-
-    // 账号绑定事件
-    user.accounts.forEach((acc) => {
-      allEvents.push({
-        type: 'account',
-        data: acc,
-        timestamp: acc.createdAt,
-      })
-    })
-
-    // 会话创建事件（只显示最近10个）
-    user.sessions
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .slice(0, 10)
-      .forEach((sess) => {
-        allEvents.push({
-          type: 'session',
-          data: sess,
-          timestamp: sess.createdAt,
-        })
-      })
-
-    // 排序
-    allEvents.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-
-    // 转换为事件列表
-    allEvents.forEach((event) => {
-      switch (event.type) {
-        case 'register':
-          events.push({
-            title: '🎉 用户注册',
-            description: `UnionID: ${user.unionId.substring(0, 20)}...`,
-            timestamp: event.timestamp,
-            type: 'register',
-            status: 'success',
-          })
-          break
-        case 'account':
-          const acc = event.data as UserAccount
-          const platformInfo = getPlatformTypeInfo(acc.type, acc.provider)
-          events.push({
-            title: `🔗 绑定${platformInfo.label}`,
-            description: `昵称: ${acc.nickname || '未设置'}`,
-            timestamp: event.timestamp,
-            type: 'account',
-            status: 'primary',
-          })
-          break
-        case 'session':
-          const sess = event.data as Session
-          const isExpired = new Date(sess.expiresAt) < new Date()
-          events.push({
-            title: isExpired ? '⏰ 会话已过期' : '🔐 会话创建',
-            description: `设备: ${sess.deviceInfo?.deviceType || '未知设备'} | IP: ${sess.deviceInfo?.ip || '未知'}`,
-            timestamp: event.timestamp,
-            type: 'session',
-            status: isExpired ? 'error' : 'success',
-          })
-          break
-      }
-    })
-
-    return events
-  }
-
   // 计算活跃会话数
   const getActiveSessionsCount = (user: User) => {
     return user.sessions.filter((s) => new Date(s.expiresAt) > new Date()).length
@@ -537,27 +456,91 @@ export default function AdminDashboard() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          bgcolor: 'grey.50',
           p: 4,
+          background: 'linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0f172a 100%)',
+          position: 'relative',
+          overflow: 'hidden',
+          '&::before': {
+            content: '""',
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'radial-gradient(ellipse at 30% 20%, rgba(34, 197, 94, 0.08) 0%, transparent 50%)',
+            pointerEvents: 'none',
+          },
+          '&::after': {
+            content: '""',
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'radial-gradient(ellipse at 70% 80%, rgba(59, 130, 246, 0.06) 0%, transparent 50%)',
+            pointerEvents: 'none',
+          },
         }}
       >
-        <Paper sx={{ maxWidth: 500, width: '100%', p: 8 }}>
-          <Typography variant="h4" align="center" gutterBottom>
-            账号中心 - 管理员登录
-          </Typography>
-
-          <Box sx={{ mb: 3, textAlign: 'center' }}>
-            <Typography variant="body2" color="text.secondary">
-              请使用微信扫码登录
+        <Paper
+          elevation={24}
+          sx={{
+            maxWidth: 420,
+            width: '100%',
+            p: 5,
+            textAlign: 'center',
+            position: 'relative',
+            zIndex: 1,
+            borderRadius: 3,
+            bgcolor: 'rgba(255,255,255,0.96)',
+            backdropFilter: 'blur(12px)',
+            border: '1px solid rgba(255,255,255,0.2)',
+          }}
+        >
+          {/* Logo + Brand */}
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1.5, mb: 3 }}>
+            <Box
+              component="img"
+              src="/ai-logo.png"
+              alt="Logo"
+              sx={{ width: 40, height: 40 }}
+            />
+            <Typography
+              sx={{
+                fontFamily: '"Fira Code", monospace',
+                fontSize: 20,
+                fontWeight: 600,
+                color: '#1E3A8A',
+                letterSpacing: '0.02em',
+              }}
+            >
+              CRAZYAIGC
             </Typography>
-            <Typography variant="caption" color="text.secondary">
-              只有管理员微信账号可以访问
+            <Typography sx={{ color: 'text.secondary', mx: 0.5 }}>|</Typography>
+            <Typography variant="body1" color="text.secondary" fontWeight={500}>
+              账号中心
             </Typography>
           </Box>
 
+          <Typography variant="h5" fontWeight={600} sx={{ mb: 1, color: 'grey.800' }}>
+            管理员登录
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 4 }}>
+            请使用微信扫码登录，仅管理员可访问
+          </Typography>
+
           {error && (
-            <Box sx={{ mb: 3, bgcolor: 'error.light', p: 2, borderRadius: 1 }}>
-              <Typography variant="body2" color="error.error">
+            <Box
+              sx={{
+                mb: 3,
+                p: 2,
+                borderRadius: 2,
+                bgcolor: 'error.50',
+                border: '1px solid',
+                borderColor: 'error.light',
+              }}
+            >
+              <Typography variant="body2" color="error.main">
                 {error}
               </Typography>
             </Box>
@@ -570,11 +553,20 @@ export default function AdminDashboard() {
             variant="contained"
             size="large"
             sx={{
-              bgcolor: 'success.main',
-              '&:hover': { bgcolor: 'success.dark' },
+              py: 1.5,
+              fontSize: 16,
+              fontWeight: 600,
+              borderRadius: 2,
+              textTransform: 'none',
+              bgcolor: '#07c160',
+              boxShadow: '0 4px 14px rgba(7, 193, 96, 0.4)',
+              '&:hover': {
+                bgcolor: '#06ad56',
+                boxShadow: '0 6px 20px rgba(7, 193, 96, 0.5)',
+              },
             }}
           >
-            {loading ? '登录中...' : '微信登录'}
+            {loading ? '登录中...' : '微信扫码登录'}
           </Button>
         </Paper>
       </Box>
@@ -590,12 +582,18 @@ export default function AdminDashboard() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          bgcolor: 'grey.50',
+          background: 'linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0f172a 100%)',
         }}
       >
         <Box sx={{ textAlign: 'center' }}>
-          <CircularProgress sx={{ mb: 2 }} />
-          <Typography>验证管理员权限中...</Typography>
+          <Box
+            component="img"
+            src="/ai-logo.png"
+            alt="Logo"
+            sx={{ width: 48, height: 48, mb: 2, opacity: 0.9 }}
+          />
+          <CircularProgress sx={{ mb: 2, color: 'white' }} />
+          <Typography color="white">验证管理员权限中...</Typography>
         </Box>
       </Box>
     )
@@ -610,18 +608,35 @@ export default function AdminDashboard() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          bgcolor: 'grey.50',
+          background: 'linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0f172a 100%)',
           p: 4,
         }}
       >
-        <Paper sx={{ maxWidth: 400, width: '100%', p: 8, textAlign: 'center' }}>
-          <Typography variant="h4" color="error.main" gutterBottom>
+        <Paper
+          elevation={24}
+          sx={{
+            maxWidth: 400,
+            width: '100%',
+            p: 5,
+            textAlign: 'center',
+            borderRadius: 3,
+            bgcolor: 'rgba(255,255,255,0.96)',
+            backdropFilter: 'blur(12px)',
+          }}
+        >
+          <Box
+            component="img"
+            src="/ai-logo.png"
+            alt="Logo"
+            sx={{ width: 40, height: 40, mb: 2 }}
+          />
+          <Typography variant="h5" color="error.main" fontWeight={600} gutterBottom>
             无权限访问
           </Typography>
           <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
             {error || '您没有管理员权限'}
           </Typography>
-          <Button variant="contained" onClick={handleLogout}>
+          <Button variant="contained" onClick={handleLogout} sx={{ borderRadius: 2 }}>
             返回登录
           </Button>
         </Paper>
@@ -632,16 +647,30 @@ export default function AdminDashboard() {
   // ========== 渲染：管理员界面 ==========
   return (
     <Container maxWidth="xl" sx={{ py: 4 }}>
-      {/* Header */}
+      {/* Header - 按 logo-standards */}
       <Paper sx={{ p: 3, mb: 3 }}>
         <Box display="flex" justifyContent="space-between" alignItems="center">
-          <Box>
-            <Typography variant="h4" gutterBottom>
-              账号中心 - 用户管理
+          <Box display="flex" alignItems="center" gap={1}>
+            <Box component="img" src="/ai-logo.png" alt="Logo" sx={{ width: 32, height: 32 }} />
+            <Typography
+              sx={{
+                fontFamily: '"Fira Code", monospace',
+                fontSize: 18,
+                fontWeight: 600,
+                color: '#1E3A8A',
+              }}
+            >
+              CRAZYAIGC
             </Typography>
-            <Typography variant="body2" color="text.secondary">
-              查看用户详细信息、登录账户和活跃会话
-            </Typography>
+            <Typography color="text.secondary" sx={{ mx: 0.5 }}>|</Typography>
+            <Box>
+              <Typography variant="h6" sx={{ lineHeight: 1.2 }}>
+                账号中心 - 用户管理
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                查看用户详细信息、登录账户和活跃会话
+              </Typography>
+            </Box>
           </Box>
           <Box display="flex" gap={2}>
             <Button
@@ -963,7 +992,7 @@ export default function AdminDashboard() {
         open={drawerOpen}
         onClose={closeDrawer}
         PaperProps={{
-          sx: { width: 600, maxWidth: '100%' },
+          sx: { width: 680, maxWidth: '100%' },
         }}
       >
         {selectedUser && (
@@ -978,305 +1007,205 @@ export default function AdminDashboard() {
 
             {/* 抽屉内容 */}
             <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
-              {/* 基本信息 */}
-              <Card sx={{ mb: 2 }}>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    📌 基本信息
+              {/* 1. 身份标识 */}
+              <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+                身份标识
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mb: 3 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <Typography variant="caption" color="text.secondary">用户ID</Typography>
+                  <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                    {selectedUser.userId.substring(0, 8)}...
                   </Typography>
-                  <Box display="flex" flexDirection="column" gap={1}>
-                    <Box>
-                      <Box display="flex" alignItems="center" gap={1}>
-                        <Typography variant="caption" color="text.secondary">
-                          用户ID:
-                        </Typography>
-                        <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
-                          {selectedUser.userId}
-                        </Typography>
-                        <IconButton
-                          size="small"
-                          onClick={() => copyToClipboard(selectedUser.userId, 'userId')}
-                        >
-                          <ContentCopyIcon fontSize="small" />
-                        </IconButton>
-                        {copied === 'userId' && (
-                          <Typography variant="caption" color="success.main">
-                            已复制!
-                          </Typography>
-                        )}
-                      </Box>
-                    </Box>
-                    <Box>
-                      <Box display="flex" alignItems="center" gap={1}>
-                        <Typography variant="caption" color="text.secondary">
-                          UnionID:
-                        </Typography>
-                        <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
-                          {selectedUser.unionId}
-                        </Typography>
-                        <IconButton
-                          size="small"
-                          onClick={() => copyToClipboard(selectedUser.unionId, 'unionId')}
-                        >
-                          <ContentCopyIcon fontSize="small" />
-                        </IconButton>
-                        {copied === 'unionId' && (
-                          <Typography variant="caption" color="success.main">
-                            已复制!
-                          </Typography>
-                        )}
-                      </Box>
-                    </Box>
-                    <Box sx={{ width: '50%' }}>
-                      <Typography variant="caption" color="text.secondary">
-                        手机号:
-                      </Typography>
-                      <Typography variant="body2">{selectedUser.phoneNumber || '-'}</Typography>
-                    </Box>
-                    <Box sx={{ width: '50%' }}>
-                      <Typography variant="caption" color="text.secondary">
-                        邮箱:
-                      </Typography>
-                      <Typography variant="body2">{selectedUser.email || '-'}</Typography>
-                    </Box>
-                    <Box sx={{ width: '50%' }}>
-                      <Typography variant="caption" color="text.secondary">
-                        注册时间:
-                      </Typography>
-                      <Typography variant="body2">
-                        {format(new Date(selectedUser.createdAt), 'yyyy-MM-dd HH:mm', { locale: zhCN })}
-                      </Typography>
-                    </Box>
-                    <Box sx={{ width: '50%' }}>
-                      <Typography variant="caption" color="text.secondary">
-                        最后登录:
-                      </Typography>
-                      <Typography variant="body2">
-                        {selectedUser.lastLoginAt
-                          ? format(new Date(selectedUser.lastLoginAt), 'yyyy-MM-dd HH:mm', { locale: zhCN })
-                          : '-'}
-                      </Typography>
-                    </Box>
-                  </Box>
-                </CardContent>
-              </Card>
+                  <IconButton size="small" onClick={() => copyToClipboard(selectedUser.userId, 'userId')}>
+                    <ContentCopyIcon sx={{ fontSize: 16 }} />
+                  </IconButton>
+                  {copied === 'userId' && <Typography variant="caption" color="success.main">已复制</Typography>}
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <Typography variant="caption" color="text.secondary">UnionID</Typography>
+                  <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                    {selectedUser.unionId.substring(0, 12)}...
+                  </Typography>
+                  <IconButton size="small" onClick={() => copyToClipboard(selectedUser.unionId, 'unionId')}>
+                    <ContentCopyIcon sx={{ fontSize: 16 }} />
+                  </IconButton>
+                  {copied === 'unionId' && <Typography variant="caption" color="success.main">已复制</Typography>}
+                </Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">手机号</Typography>
+                  <Typography variant="body2">{selectedUser.phoneNumber || '-'}</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">邮箱</Typography>
+                  <Typography variant="body2">{selectedUser.email || '-'}</Typography>
+                </Box>
+              </Box>
 
-              {/* 登录账户 */}
-              <Card sx={{ mb: 2 }}>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    🔐 登录账户 ({selectedUser.accounts.length})
+              {/* 2. 注册与绑定 */}
+              <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+                注册与绑定
+              </Typography>
+              <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, mb: 3 }}>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">注册时间</Typography>
+                  <Typography variant="body2">
+                    {format(new Date(selectedUser.createdAt), 'yyyy-MM-dd HH:mm', { locale: zhCN })}
                   </Typography>
-                  {selectedUser.accounts.map((account) => (
+                </Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">最后登录</Typography>
+                  <Typography variant="body2">
+                    {selectedUser.lastLoginAt
+                      ? format(new Date(selectedUser.lastLoginAt), 'yyyy-MM-dd HH:mm', { locale: zhCN })
+                      : '-'}
+                  </Typography>
+                </Box>
+              </Box>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 3 }}>
+                {selectedUser.accounts.map((account) => {
+                  const platformInfo = getPlatformTypeInfo(account.type, account.provider)
+                  return (
                     <Box
                       key={account.id}
                       sx={{
-                        mb: 2,
-                        p: 2,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 1,
+                        px: 1.5,
+                        py: 1,
                         border: 1,
                         borderColor: 'divider',
                         borderRadius: 1,
+                        bgcolor: 'grey.50',
                       }}
                     >
-                      <Box display="flex" alignItems="center" gap={1} mb={1}>
-                        <Avatar src={account.avatarUrl} sx={{ width: 32, height: 32 }}>
-                          {account.nickname?.charAt(0) || <AccountCircleIcon />}
-                        </Avatar>
-                        <Box flex={1}>
-                          <Box display="flex" alignItems="center" gap={1} mb={0.5}>
-                            <Typography variant="body2" fontWeight="bold">
-                              {account.nickname || '未设置昵称'}
-                            </Typography>
-                            <Chip
-                              {...getPlatformTypeInfo(account.type, account.provider)}
-                              size="small"
-                            />
-                          </Box>
-                        </Box>
-                      </Box>
-
-                      <Box display="flex" flexDirection="column" gap={1} mt={1}>
-                        <Box>
+                      <Avatar src={account.avatarUrl} sx={{ width: 28, height: 28 }}>
+                        {account.nickname?.charAt(0) || <AccountCircleIcon />}
+                      </Avatar>
+                      <Box>
+                        <Typography variant="body2" fontWeight="medium">
+                          {account.nickname || '未设置'}
+                        </Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Chip {...platformInfo} size="small" sx={{ height: 20 }} />
                           <Typography variant="caption" color="text.secondary">
-                            Provider:
-                          </Typography>
-                          <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
-                            {account.provider}
-                          </Typography>
-                        </Box>
-                        <Box>
-                          <Typography variant="caption" color="text.secondary">
-                            AppID:
-                          </Typography>
-                          <Box display="flex" alignItems="center" gap={1}>
-                            <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
-                              {account.appId}
-                            </Typography>
-                            <IconButton
-                              size="small"
-                              onClick={() => copyToClipboard(account.appId, `appId-${account.id}`)}
-                            >
-                              <ContentCopyIcon fontSize="small" />
-                            </IconButton>
-                          </Box>
-                        </Box>
-                        <Box>
-                          <Typography variant="caption" color="text.secondary">
-                            OpenID:
-                          </Typography>
-                          <Box display="flex" alignItems="center" gap={1}>
-                            <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
-                              {account.openId.substring(0, 30)}...
-                            </Typography>
-                            <IconButton
-                              size="small"
-                              onClick={() => copyToClipboard(account.openId, `openId-${account.id}`)}
-                            >
-                              <ContentCopyIcon fontSize="small" />
-                            </IconButton>
-                          </Box>
-                        </Box>
-                        <Box>
-                          <Typography variant="caption" color="text.secondary">
-                            绑定时间:
-                          </Typography>
-                          <Typography variant="body2">
-                            {format(new Date(account.createdAt), 'yyyy-MM-dd HH:mm:ss', { locale: zhCN })}
+                            {format(new Date(account.createdAt), 'yyyy-MM-dd', { locale: zhCN })} 绑定
                           </Typography>
                         </Box>
                       </Box>
+                      <Tooltip title="复制 AppID">
+                        <IconButton size="small" onClick={() => copyToClipboard(account.appId, `appId-${account.id}`)}>
+                          <ContentCopyIcon sx={{ fontSize: 14 }} />
+                        </IconButton>
+                      </Tooltip>
                     </Box>
-                  ))}
-                </CardContent>
-              </Card>
+                  )
+                })}
+              </Box>
 
-              {/* 活跃会话 */}
-              <Card sx={{ mb: 2 }}>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    💻 活跃会话 ({getActiveSessionsCount(selectedUser)} / {selectedUser.sessions.length})
+              {/* 3. 业务足迹 */}
+              {(selectedUser.loginSources?.length ?? 0) > 0 && (
+                <>
+                  <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+                    业务足迹
                   </Typography>
-                  {selectedUser.sessions.length === 0 ? (
-                    <Typography color="text.secondary">暂无会话</Typography>
-                  ) : (
-                    selectedUser.sessions.map((session) => {
+                  <TableContainer component={Paper} variant="outlined" sx={{ mb: 3 }}>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>业务系统</TableCell>
+                          <TableCell>最近登录</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {selectedUser.loginSources!.map((item) => (
+                          <TableRow key={item.sourceHost}>
+                            <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>
+                              {item.sourceHost}
+                            </TableCell>
+                            <TableCell>
+                              {format(new Date(item.lastLoginAt), 'yyyy-MM-dd HH:mm', { locale: zhCN })}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </>
+              )}
+
+              {/* 4. 当前活跃 */}
+              <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+                当前活跃 ({getActiveSessionsCount(selectedUser)} / {selectedUser.sessions.length})
+              </Typography>
+              {selectedUser.sessions.length === 0 ? (
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>暂无会话</Typography>
+              ) : (
+                <Box sx={{ mb: 3 }}>
+                  {[...selectedUser.sessions]
+                    .sort((a, b) => {
+                      const aExpired = new Date(a.expiresAt) < new Date()
+                      const bExpired = new Date(b.expiresAt) < new Date()
+                      if (aExpired !== bExpired) return aExpired ? 1 : -1
+                      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+                    })
+                    .map((session) => {
                       const isExpired = new Date(session.expiresAt) < new Date()
                       return (
-                        <Box
+                        <Accordion
                           key={session.id}
+                          disableGutters
+                          elevation={0}
                           sx={{
-                            mb: 2,
-                            p: 2,
                             border: 1,
-                            borderColor: isExpired ? 'error.main' : 'success.main',
-                            borderRadius: 1,
+                            borderColor: isExpired ? 'error.light' : 'success.light',
                             bgcolor: isExpired ? 'error.50' : 'success.50',
+                            '&:before': { display: 'none' },
+                            '&:not(:last-child)': { mb: 1 },
                           }}
                         >
-                          <Box display="flex" alignItems="center" gap={1} mb={1}>
-                            {isExpired ? <ErrorIcon color="error" /> : <CheckCircleIcon color="success" />}
-                            <Typography variant="body2" fontWeight="bold">
-                              {isExpired ? '已过期' : '活跃中'}
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              ({session.deviceInfo?.deviceType || '未知设备'})
-                            </Typography>
-                          </Box>
-
-                          <Box display="flex" flexDirection="column" gap={1} mt={1}>
-                            <Box>
-                              <Typography variant="caption" color="text.secondary">
-                                Token:
+                          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              {isExpired ? <ErrorIcon color="error" fontSize="small" /> : <CheckCircleIcon color="success" fontSize="small" />}
+                              <Typography variant="body2" fontWeight="medium">
+                                {isExpired ? '已过期' : '活跃中'}
                               </Typography>
-                              <Box display="flex" alignItems="center" gap={1}>
-                                <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.7rem' }}>
-                                  {session.token.substring(0, 40)}...
+                              <Typography variant="caption" color="text.secondary">
+                                {session.deviceInfo?.ip || '-'} · {format(new Date(session.expiresAt), 'MM-dd HH:mm', { locale: zhCN })} 过期
+                              </Typography>
+                            </Box>
+                          </AccordionSummary>
+                          <AccordionDetails sx={{ pt: 0 }}>
+                            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, fontSize: '0.8rem' }}>
+                              <Box>
+                                <Typography variant="caption" color="text.secondary">Token</Typography>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                  <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.7rem' }}>
+                                    {session.token.substring(0, 36)}...
+                                  </Typography>
+                                  <IconButton size="small" onClick={() => copyToClipboard(session.token, `token-${session.id}`)}>
+                                    <ContentCopyIcon sx={{ fontSize: 14 }} />
+                                  </IconButton>
+                                </Box>
+                              </Box>
+                              <Box>
+                                <Typography variant="caption" color="text.secondary">平台</Typography>
+                                <Typography variant="body2">{session.deviceInfo?.platform || '-'}</Typography>
+                              </Box>
+                              <Box>
+                                <Typography variant="caption" color="text.secondary">创建时间</Typography>
+                                <Typography variant="body2">
+                                  {format(new Date(session.createdAt), 'yyyy-MM-dd HH:mm', { locale: zhCN })}
                                 </Typography>
-                                <IconButton size="small" onClick={() => copyToClipboard(session.token, `token-${session.id}`)}>
-                                  <ContentCopyIcon fontSize="small" />
-                                </IconButton>
                               </Box>
                             </Box>
-                            <Box>
-                              <Typography variant="caption" color="text.secondary">
-                                IP:
-                              </Typography>
-                              <Typography variant="body2">{session.deviceInfo?.ip || '-'}</Typography>
-                            </Box>
-                            <Box>
-                              <Typography variant="caption" color="text.secondary">
-                                平台:
-                              </Typography>
-                              <Typography variant="body2">{session.deviceInfo?.platform || '-'}</Typography>
-                            </Box>
-                            <Box sx={{ width: '50%' }}>
-                              <Typography variant="caption" color="text.secondary">
-                                创建时间:
-                              </Typography>
-                              <Typography variant="body2">
-                                {format(new Date(session.createdAt), 'MM-dd HH:mm', { locale: zhCN })}
-                              </Typography>
-                            </Box>
-                            <Box sx={{ width: '50%' }}>
-                              <Typography variant="caption" color="text.secondary">
-                                过期时间:
-                              </Typography>
-                              <Typography variant="body2" color={isExpired ? 'error' : 'success'}>
-                                {format(new Date(session.expiresAt), 'MM-dd HH:mm', { locale: zhCN })}
-                              </Typography>
-                            </Box>
-                          </Box>
-                        </Box>
+                          </AccordionDetails>
+                        </Accordion>
                       )
-                    })
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* 时间线 */}
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    📊 登录历史时间线
-                  </Typography>
-                  <Box>
-                    {generateHistory(selectedUser).map((event, index) => (
-                      <Box
-                        key={index}
-                        sx={{
-                          mb: 2,
-                          p: 2,
-                          border: 1,
-                          borderColor: 'divider',
-                          borderRadius: 1,
-                          bgcolor: event.status === 'error' ? 'error.50' : event.status === 'success' ? 'success.50' : 'primary.50',
-                        }}
-                      >
-                        <Box display="flex" alignItems="center" gap={1} mb={1}>
-                          {event.type === 'register' && <AccountCircleIcon color="success" />}
-                          {event.type === 'account' && <CheckCircleIcon color="primary" />}
-                          {event.type === 'session' && (
-                            event.status === 'error' ? (
-                              <ErrorIcon color="error" />
-                            ) : (
-                              <CheckCircleIcon color="success" />
-                            )
-                          )}
-                          <Typography variant="body2" fontWeight="bold">
-                            {event.title}
-                          </Typography>
-                        </Box>
-                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                          {event.description}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                          {format(new Date(event.timestamp), 'yyyy-MM-dd HH:mm:ss', { locale: zhCN })}
-                        </Typography>
-                      </Box>
-                    ))}
-                  </Box>
-                </CardContent>
-              </Card>
+                    })}
+                </Box>
+              )}
             </Box>
 
             {/* 抽屉底部操作 */}

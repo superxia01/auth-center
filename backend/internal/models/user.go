@@ -60,3 +60,17 @@ type Session struct {
 func (Session) TableName() string {
 	return "sessions"
 }
+
+// UserLoginLog 用户登录流水表
+type UserLoginLog struct {
+	ID          string    `gorm:"primaryKey;column:id;type:uuid;default:gen_random_uuid()" json:"id"`
+	UserID      string    `gorm:"index;column:user_id;type:uuid;not null" json:"userId"`
+	SourceHost  string    `gorm:"column:source_host;type:varchar(255);not null" json:"sourceHost"`
+	LoginMethod string    `gorm:"column:login_method;type:varchar(50);not null" json:"loginMethod"` // wechat_mp | wechat_open
+	CreatedAt   time.Time `gorm:"column:created_at;type:timestamp with time zone" json:"createdAt"`
+}
+
+// TableName 指定表名
+func (UserLoginLog) TableName() string {
+	return "user_login_log"
+}
